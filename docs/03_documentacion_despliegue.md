@@ -55,13 +55,14 @@ ASPNETCORE_ENVIRONMENT=Production
 
 ### Cadena de conexion PostgreSQL
 
-La aplicacion espera:
+La aplicacion acepta cualquiera de estas dos opciones:
 
 ```text
 ConnectionStrings__Postgres
+DATABASE_URL
 ```
 
-Formato recomendado:
+Opcion recomendada con formato Npgsql:
 
 ```text
 Host=HOST;Port=PORT;Database=DATABASE;Username=USER;Password=PASSWORD;SSL Mode=Require;Trust Server Certificate=true
@@ -72,10 +73,16 @@ En Railway puedes crear una base PostgreSQL y luego usar las variables generadas
 Ejemplo conceptual:
 
 ```text
-ConnectionStrings__Postgres=Host=${PGHOST};Port=${PGPORT};Database=${PGDATABASE};Username=${PGUSER};Password=${PGPASSWORD};SSL Mode=Require;Trust Server Certificate=true
+ConnectionStrings__Postgres=Host=${{Postgres.PGHOST}};Port=${{Postgres.PGPORT}};Database=${{Postgres.PGDATABASE}};Username=${{Postgres.PGUSER}};Password=${{Postgres.PGPASSWORD}};SSL Mode=Require;Trust Server Certificate=true
 ```
 
-Si Railway entrega una `DATABASE_URL`, tambien puedes convertirla al formato usado por Npgsql o ajustar el codigo para soportar esa URL. Para esta version se recomienda configurar directamente `ConnectionStrings__Postgres`.
+Opcion alternativa:
+
+```text
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+La aplicacion convierte automaticamente `postgres://...` o `postgresql://...` al formato que usa Npgsql.
 
 ### Administrador inicial
 
@@ -115,6 +122,12 @@ Recomendacion para produccion:
 - No depender de llaves dentro de un contenedor efimero.
 - Documentar procedimiento de rotacion o recuperacion.
 
+Variable recomendada si montas un volumen en Railway:
+
+```text
+DataProtection__KeysPath=/data/DataProtectionKeys
+```
+
 ## 7. PostgreSQL en Railway
 
 Pasos generales:
@@ -123,7 +136,7 @@ Pasos generales:
 2. Agregar servicio PostgreSQL.
 3. Esperar a que Railway genere las variables de conexion.
 4. Crear el servicio de la aplicacion web.
-5. Configurar `ConnectionStrings__Postgres`.
+5. Configurar `ConnectionStrings__Postgres` o `DATABASE_URL`.
 6. Desplegar.
 7. Revisar logs de arranque.
 
@@ -169,12 +182,18 @@ dotnet publish src\FinanzasPersonales.Web\FinanzasPersonales.Web.csproj -c Relea
 
 1. Dentro del proyecto Railway, agregar PostgreSQL.
 2. Revisar variables generadas.
-3. Crear la variable `ConnectionStrings__Postgres` en el servicio web.
+3. Crear la variable `ConnectionStrings__Postgres` o `DATABASE_URL` en el servicio web.
 
 Ejemplo:
 
 ```text
-ConnectionStrings__Postgres=Host=${PGHOST};Port=${PGPORT};Database=${PGDATABASE};Username=${PGUSER};Password=${PGPASSWORD};SSL Mode=Require;Trust Server Certificate=true
+ConnectionStrings__Postgres=Host=${{Postgres.PGHOST}};Port=${{Postgres.PGPORT}};Database=${{Postgres.PGDATABASE}};Username=${{Postgres.PGUSER}};Password=${{Postgres.PGPASSWORD}};SSL Mode=Require;Trust Server Certificate=true
+```
+
+O:
+
+```text
+DATABASE_URL=${{Postgres.DATABASE_URL}}
 ```
 
 ### 8.4 Configurar variables de la aplicacion
@@ -186,6 +205,12 @@ ASPNETCORE_ENVIRONMENT=Production
 InitialAdmin__Email=tu_correo@dominio.com
 InitialAdmin__Password=ClaveFuerteInicial123!
 ConnectionStrings__Postgres=...
+```
+
+Tambien puedes usar:
+
+```text
+DATABASE_URL=...
 ```
 
 No es necesario configurar `PORT`; Railway la asigna automaticamente.
@@ -268,7 +293,7 @@ Asi se puede leer documentacion en pantalla y descargar PDFs desde la aplicacion
 - Dockerfile en la raiz.
 - Repositorio subido a GitHub.
 - PostgreSQL creado en Railway.
-- `ConnectionStrings__Postgres` configurado.
+- `ConnectionStrings__Postgres` o `DATABASE_URL` configurado.
 - `ASPNETCORE_ENVIRONMENT=Production`.
 - Administrador inicial configurado.
 - SMTP probado.
@@ -317,7 +342,7 @@ Revisar:
 
 Revisar:
 
-- Variable `ConnectionStrings__Postgres`.
+- Variable `ConnectionStrings__Postgres` o `DATABASE_URL`.
 - Host, puerto, usuario, password y base.
 - SSL requerido por la base.
 - Logs de Railway.
@@ -347,4 +372,3 @@ Solucion:
 Para la primera publicacion, Railway es una opcion adecuada para esta aplicacion si se despliega con Dockerfile y PostgreSQL administrado.
 
 Para produccion real, antes de vender acceso a clientes, se debe resolver persistencia de DataProtection, backups de PostgreSQL, dominio propio, monitoreo y estrategia de recuperacion.
-

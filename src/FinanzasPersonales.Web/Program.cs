@@ -5,6 +5,7 @@ using Dapper;
 using FinanzasPersonales.Web.Data;
 using FinanzasPersonales.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +19,15 @@ builder.Logging.AddDebug();
 builder.Services.AddControllersWithViews(opt =>
 {
     opt.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+});
+builder.Services.AddAntiforgery(opt =>
+{
+    opt.Cookie.Name = "FinanzasPersonales.AntiForgery";
+    opt.Cookie.HttpOnly = true;
+    opt.Cookie.SameSite = SameSiteMode.Strict;
+    opt.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
 });
 builder.Services.AddSingleton<Db>();
 builder.Services.AddSingleton<AsistenteFinancieroService>();
@@ -34,7 +44,9 @@ builder.Services.AddRateLimiter(opt =>
         limiter.AutoReplenishment = true;
     });
 });
-var directorioClaves = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys");
+var directorioClaves = builder.Configuration["DataProtection:KeysPath"];
+if (string.IsNullOrWhiteSpace(directorioClaves))
+    directorioClaves = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys");
 Directory.CreateDirectory(directorioClaves);
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(directorioClaves))
@@ -81,6 +93,24 @@ app.Use(async (context, next) =>
         "connect-src 'self' https://graph.facebook.com; " +
         "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     await next();
+});
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (AntiforgeryValidationException ex) when (EsTokenAntiforgeryNoDescifrable(ex))
+    {
+        LimpiarCookiesProtegidas(context);
+        context.Response.Redirect(context.Request.PathBase + "/Acceso/Login?sesionRestablecida=1");
+    }
+    catch (CryptographicException ex) when (EsLlaveDataProtectionPerdida(ex))
+    {
+        LimpiarCookiesProtegidas(context);
+        context.Response.Redirect(context.Request.PathBase + "/Acceso/Login?sesionRestablecida=1");
+    }
 });
 
 // Cultura es-CO para formato de pesos: $ 1.234.567
@@ -403,6 +433,42 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+static bool EsTokenAntiforgeryNoDescifrable(Exception ex)
+{
+    return ex.Message.Contains("could not be decrypted", StringComparison.OrdinalIgnoreCase) ||
+           EsLlaveDataProtectionPerdida(ex) ||
+           (ex.InnerException != null && EsLlaveDataProtectionPerdida(ex.InnerException));
+}
+
+static bool EsLlaveDataProtectionPerdida(Exception ex)
+{
+    return ex.Message.Contains("was not found in the key ring", StringComparison.OrdinalIgnoreCase) ||
+           ex.Message.Contains("key ring", StringComparison.OrdinalIgnoreCase);
+}
+
+static void LimpiarCookiesProtegidas(HttpContext context)
+{
+    var opciones = new CookieOptions
+    {
+        HttpOnly = true,
+        Secure = !context.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment(),
+        SameSite = SameSiteMode.Strict,
+        Path = "/"
+    };
+
+    context.Response.Cookies.Delete("FinanzasPersonales.Auth", opciones);
+    context.Response.Cookies.Delete("FinanzasPersonales.AntiForgery", opciones);
+
+    foreach (var cookie in context.Request.Cookies.Keys)
+    {
+        if (cookie.StartsWith(".AspNetCore.Antiforgery", StringComparison.OrdinalIgnoreCase) ||
+            cookie.StartsWith("FinanzasPersonales.", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.Cookies.Delete(cookie, opciones);
+        }
+    }
+}
 
 static string CrearPasswordInicial()
 {
