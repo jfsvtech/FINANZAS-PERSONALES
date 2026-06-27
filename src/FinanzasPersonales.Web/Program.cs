@@ -7,6 +7,7 @@ using FinanzasPersonales.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -70,6 +71,33 @@ builder.Services
 
 var app = builder.Build();
 
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+    ForwardLimit = null
+};
+forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (AntiforgeryValidationException ex) when (EsTokenAntiforgeryNoDescifrable(ex))
+    {
+        LimpiarCookiesProtegidas(context);
+        context.Response.Redirect(context.Request.PathBase + "/Acceso/Login?sesionRestablecida=1");
+    }
+    catch (CryptographicException ex) when (EsLlaveDataProtectionPerdida(ex))
+    {
+        LimpiarCookiesProtegidas(context);
+        context.Response.Redirect(context.Request.PathBase + "/Acceso/Login?sesionRestablecida=1");
+    }
+});
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Acceso/Login");
@@ -93,24 +121,6 @@ app.Use(async (context, next) =>
         "connect-src 'self' https://graph.facebook.com; " +
         "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     await next();
-});
-
-app.Use(async (context, next) =>
-{
-    try
-    {
-        await next();
-    }
-    catch (AntiforgeryValidationException ex) when (EsTokenAntiforgeryNoDescifrable(ex))
-    {
-        LimpiarCookiesProtegidas(context);
-        context.Response.Redirect(context.Request.PathBase + "/Acceso/Login?sesionRestablecida=1");
-    }
-    catch (CryptographicException ex) when (EsLlaveDataProtectionPerdida(ex))
-    {
-        LimpiarCookiesProtegidas(context);
-        context.Response.Redirect(context.Request.PathBase + "/Acceso/Login?sesionRestablecida=1");
-    }
 });
 
 // Cultura es-CO para formato de pesos: $ 1.234.567
