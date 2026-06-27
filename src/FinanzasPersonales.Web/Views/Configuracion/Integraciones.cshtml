@@ -23,6 +23,19 @@
                     <strong>Gmail recomendado:</strong> servidor <code>smtp.gmail.com</code>, puerto <code>587</code>,
                     SSL/TLS activo y <strong>contrasena de aplicacion</strong>. La contrasena normal de Gmail no funciona para SMTP.
                 </div>
+                @if (!string.IsNullOrWhiteSpace(Model.SmtpDiagnostico))
+                {
+                    <div class="alert @(Model.SmtpPasswordDescifrable ? "alert-secondary" : "alert-danger") py-2 small">
+                        <strong>Diagnostico SMTP:</strong> @Model.SmtpDiagnostico
+                        @if (!Model.SmtpPasswordDescifrable)
+                        {
+                            <div class="mt-2">
+                                En Railway configura un volumen persistente para las llaves o define <code>DataProtection__KeysPath</code>
+                                apuntando a una ruta persistente, por ejemplo <code>/data/dataprotectionkeys</code>. Luego vuelve a guardar la contrasena SMTP aqui.
+                            </div>
+                        }
+                    </div>
+                }
 
                 <form method="post" asp-action="GuardarSmtp" class="row g-3">
                     @Html.AntiForgeryToken()
@@ -88,7 +101,7 @@
                     <dt>Servidor</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpHost) ? "Sin configurar" : Model.SmtpHost)</dd>
                     <dt>Puerto</dt><dd>@Model.SmtpPort</dd>
                     <dt>Usuario</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpUser) ? "Sin configurar" : Model.SmtpUser)</dd>
-                    <dt>Contrasena</dt><dd>@(Model.SmtpPasswordGuardada ? "Guardada cifrada" : "Sin configurar")</dd>
+                    <dt>Contrasena</dt><dd>@(Model.SmtpPasswordGuardada ? "Guardada cifrada" : Model.SmtpPasswordCifradaEnBaseDatos ? "Guardada pero no descifrable" : "Sin configurar")</dd>
                     <dt>SSL/TLS</dt><dd>@(Model.SmtpEnableSsl ? "Activo" : "Inactivo")</dd>
                 </dl>
             </div>

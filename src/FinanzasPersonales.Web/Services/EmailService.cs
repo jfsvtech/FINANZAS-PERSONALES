@@ -41,6 +41,57 @@ public class EmailService
         };
     }
 
+    public SmtpDiagnostico ObtenerDiagnostico()
+    {
+        try
+        {
+            using var con = _db.Abrir();
+            var filas = con.Query<(string Clave, string? Valor, bool Protegido)>(
+                "SELECT clave, valor, protegido FROM configuraciones_sistema WHERE clave LIKE 'Smtp:%'")
+                .ToDictionary(x => x.Clave, x => x, StringComparer.OrdinalIgnoreCase);
+
+            var diagnostico = new SmtpDiagnostico
+            {
+                TieneConfiguracionBaseDatos = filas.Count > 0,
+                PasswordCifradaEnBaseDatos = filas.TryGetValue("Smtp:Password", out var filaPassword) && !string.IsNullOrWhiteSpace(filaPassword.Valor)
+            };
+
+            if (diagnostico.PasswordCifradaEnBaseDatos)
+            {
+                try
+                {
+                    _ = _protector.Unprotect(filaPassword.Valor!);
+                    diagnostico.PasswordDescifrable = true;
+                    diagnostico.Mensaje = "La contrasena SMTP guardada se puede descifrar correctamente.";
+                }
+                catch
+                {
+                    diagnostico.PasswordDescifrable = false;
+                    diagnostico.Mensaje = "Hay una contrasena SMTP guardada, pero no se puede descifrar con las llaves actuales. En Railway esto suele ocurrir cuando DataProtection no usa un volumen persistente o cambiaste de contenedor/despliegue. Vuelve a guardar la contrasena SMTP en produccion y configura un KeysPath persistente.";
+                }
+            }
+            else if (diagnostico.TieneConfiguracionBaseDatos)
+            {
+                diagnostico.Mensaje = "La configuracion SMTP existe, pero no hay contrasena guardada. Ingresa la contrasena SMTP y guarda.";
+            }
+            else
+            {
+                diagnostico.Mensaje = "No hay configuracion SMTP guardada en base de datos.";
+            }
+
+            return diagnostico;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo obtener diagnostico SMTP.");
+            return new SmtpDiagnostico
+            {
+                PasswordDescifrable = false,
+                Mensaje = "No se pudo leer el diagnostico SMTP: " + ex.Message
+            };
+        }
+    }
+
     public void GuardarConfiguracion(SmtpSettings settings, bool actualizarPassword)
     {
         using var con = _db.Abrir();
@@ -141,7 +192,11 @@ public class EmailService
                 if (!fila.Protegido)
                     return fila.Valor;
                 try { return _protector.Unprotect(fila.Valor); }
-                catch { return ""; }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "No se pudo descifrar la configuracion protegida {Clave}. Revisa persistencia de DataProtection.", clave);
+                    return "";
+                }
             }
 
             return new SmtpSettings

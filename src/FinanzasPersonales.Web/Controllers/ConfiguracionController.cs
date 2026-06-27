@@ -21,6 +21,7 @@ public class ConfiguracionController : BaseController
     {
         if (!EsAdmin) return Forbid();
         var smtp = _email.ObtenerConfiguracion();
+        var diagnosticoSmtp = _email.ObtenerDiagnostico();
         var whatsApp = _whatsApp.ObtenerConfiguracion();
         return View(new ConfiguracionIntegracionesVm
         {
@@ -31,6 +32,9 @@ public class ConfiguracionController : BaseController
             SmtpFrom = smtp.From,
             SmtpEnableSsl = smtp.EnableSsl,
             SmtpPasswordGuardada = !string.IsNullOrWhiteSpace(smtp.Password),
+            SmtpPasswordCifradaEnBaseDatos = diagnosticoSmtp.PasswordCifradaEnBaseDatos,
+            SmtpPasswordDescifrable = diagnosticoSmtp.PasswordDescifrable,
+            SmtpDiagnostico = diagnosticoSmtp.Mensaje,
             WhatsAppConfigurado = whatsApp.Configurado,
             WhatsAppPhoneNumberId = whatsApp.PhoneNumberId,
             WhatsAppGraphApiVersion = whatsApp.GraphApiVersion,

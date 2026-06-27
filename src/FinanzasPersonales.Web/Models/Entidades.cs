@@ -615,6 +615,9 @@ public class ConfiguracionIntegracionesVm
     public string SmtpFrom { get; set; } = "";
     public bool SmtpEnableSsl { get; set; } = true;
     public bool SmtpPasswordGuardada { get; set; }
+    public bool SmtpPasswordCifradaEnBaseDatos { get; set; }
+    public bool SmtpPasswordDescifrable { get; set; } = true;
+    public string SmtpDiagnostico { get; set; } = "";
     public bool WhatsAppConfigurado { get; set; }
     public string WhatsAppPhoneNumberId { get; set; } = "";
     public string WhatsAppGraphApiVersion { get; set; } = "v23.0";
@@ -622,6 +625,14 @@ public class ConfiguracionIntegracionesVm
     public string WhatsAppTemplateName { get; set; } = "";
     public string WhatsAppTemplateLanguage { get; set; } = "es";
     public bool WhatsAppTokenGuardado { get; set; }
+}
+
+public class SmtpDiagnostico
+{
+    public bool TieneConfiguracionBaseDatos { get; set; }
+    public bool PasswordCifradaEnBaseDatos { get; set; }
+    public bool PasswordDescifrable { get; set; } = true;
+    public string Mensaje { get; set; } = "";
 }
 
 public class DocumentacionIndexVm
