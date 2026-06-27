@@ -10,8 +10,15 @@ public class AsistenteController : BaseController
 {
     private readonly AsistenteFinancieroService _asistente;
     private readonly WhatsAppService _whatsApp;
+    private readonly TraduccionService _traduccion;
     private readonly Db _db;
-    public AsistenteController(AsistenteFinancieroService asistente, WhatsAppService whatsApp, Db db) { _asistente = asistente; _whatsApp = whatsApp; _db = db; }
+    public AsistenteController(AsistenteFinancieroService asistente, WhatsAppService whatsApp, TraduccionService traduccion, Db db)
+    {
+        _asistente = asistente;
+        _whatsApp = whatsApp;
+        _traduccion = traduccion;
+        _db = db;
+    }
 
     public IActionResult Index() => View(new AsistenteIndexVm
     {
@@ -66,12 +73,12 @@ public class AsistenteController : BaseController
         if (destino == "admin")
         {
             telefono = settings.AdminPhone;
-            mensaje = string.IsNullOrWhiteSpace(r.MensajeAdmin) ? r.Mensaje : r.MensajeAdmin;
+            mensaje = _traduccion.T(string.IsNullOrWhiteSpace(r.MensajeAdmin) ? r.Mensaje : r.MensajeAdmin, User);
         }
         else
         {
             telefono = r.Telefono ?? "";
-            mensaje = r.Mensaje;
+            mensaje = _traduccion.T(r.Mensaje, User);
         }
 
         if (string.IsNullOrWhiteSpace(telefono))
@@ -83,7 +90,7 @@ public class AsistenteController : BaseController
         }
 
         var result = settings.PlantillaConfigurada
-            ? await _whatsApp.EnviarPlantillaAsync(telefono, r.Titulo, r.Detalle, r.Fecha.ToString("dd/MM/yyyy"))
+            ? await _whatsApp.EnviarPlantillaAsync(telefono, _traduccion.T(r.Titulo, User), _traduccion.T(r.Detalle, User), r.Fecha.ToString("dd/MM/yyyy"))
             : await _whatsApp.EnviarTextoAsync(telefono, mensaje);
         TempData[result.Ok ? "Ok" : "Error"] = result.Message;
         return RedirectToAction("Index");

@@ -11,6 +11,11 @@
                     <span class="page-eyebrow mt-3">Acceso seguro</span>
                     <h4 class="mt-1">Recuperar contrasena</h4>
                     <p class="text-muted small">Te enviaremos un enlace de un solo uso si el correo existe.</p>
+                    <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Idioma">
+                        <a class="btn btn-outline-primary" asp-action="RecuperarClave" asp-route-lang="es">ES</a>
+                        <a class="btn btn-outline-primary" asp-action="RecuperarClave" asp-route-lang="en">EN</a>
+                        <a class="btn btn-outline-primary" asp-action="RecuperarClave" asp-route-lang="pt">PT</a>
+                    </div>
                 </div>
                 <form method="post" asp-action="RecuperarClave">
                     @Html.AntiForgeryToken()

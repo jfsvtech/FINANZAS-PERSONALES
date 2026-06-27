@@ -1,6 +1,18 @@
 @model UsuariosAdminVm
+@inject PreferenciasUsuarioService Money
 @{
     ViewBag.Titulo = "Clientes y suscripciones - Finanzas Personales";
+    string M(decimal valor, string moneda) => Money.FormatoMoneda(valor, moneda);
+    var ingresoEsperado = string.Join(" / ", Model.Usuarios
+        .Where(x => x.Activo && x.EstadoSuscripcion == "activa")
+        .GroupBy(x => string.IsNullOrWhiteSpace(x.MonedaCodigo) ? "COP" : x.MonedaCodigo)
+        .Select(g => M(g.Sum(x => x.ValorSuscripcion), g.Key)));
+    var pagadoEsteMes = string.Join(" / ", Model.Pagos
+        .Where(x => x.FechaPago.Year == DateTime.Today.Year && x.FechaPago.Month == DateTime.Today.Month)
+        .GroupBy(x => string.IsNullOrWhiteSpace(x.MonedaCodigo) ? "COP" : x.MonedaCodigo)
+        .Select(g => M(g.Sum(x => x.Monto), g.Key)));
+    if (string.IsNullOrWhiteSpace(ingresoEsperado)) ingresoEsperado = M(0, "COP");
+    if (string.IsNullOrWhiteSpace(pagadoEsteMes)) pagadoEsteMes = M(0, "COP");
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -13,8 +25,8 @@
 
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="mini-stat"><span>Clientes activos</span><strong>@Model.ClientesActivos</strong></div></div>
-    <div class="col-6 col-lg-3"><div class="mini-stat mini-stat-success"><span>Ingreso esperado</span><strong>@Model.IngresoMensualEsperado.ToString("C0")</strong></div></div>
-    <div class="col-6 col-lg-3"><div class="mini-stat"><span>Pagado este mes</span><strong>@Model.PagadoEsteMes.ToString("C0")</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="mini-stat mini-stat-success"><span>Ingreso esperado</span><strong>@ingresoEsperado</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="mini-stat"><span>Pagado este mes</span><strong>@pagadoEsteMes</strong></div></div>
     <div class="col-6 col-lg-3"><div class="mini-stat mini-stat-danger"><span>Clientes en mora</span><strong>@Model.ClientesEnMora</strong></div></div>
 </div>
 
@@ -31,17 +43,23 @@
             {
                 var bloqueado = u.BloqueadoHasta.HasValue && u.BloqueadoHasta.Value > DateTime.Now;
                 var vencido = u.DiasMora > 0 || u.EstadoSuscripcion == "moroso";
-                var pagosUsuario = Model.Pagos.Where(p => p.UsuarioId == u.Id).Take(8).ToList();
+                var pagosUsuarioTodos = Model.Pagos.Where(p => p.UsuarioId == u.Id).ToList();
+                var pagosUsuario = pagosUsuarioTodos.Take(8).ToList();
+                var totalPagadoUsuario = string.Join(" / ", pagosUsuarioTodos
+                    .GroupBy(p => string.IsNullOrWhiteSpace(p.MonedaCodigo) ? u.MonedaCodigo : p.MonedaCodigo)
+                    .Select(g => M(g.Sum(p => p.Monto), g.Key)));
+                if (string.IsNullOrWhiteSpace(totalPagadoUsuario)) totalPagadoUsuario = M(0, u.MonedaCodigo);
                 <tr class="@(u.Activo ? "" : "table-secondary text-muted")">
                     <td>
                         <strong>@u.NombreCompleto</strong>
                         <small class="d-block text-muted">@u.Email</small>
+                        <small class="d-block text-muted">@u.Idioma.ToUpperInvariant() / @u.MonedaCodigo / @u.ZonaHoraria</small>
                         <small class="d-block text-muted">Creado: @u.CreadoEn.ToString("yyyy-MM-dd")</small>
                     </td>
                     <td>
-                        <strong>@u.ValorSuscripcion.ToString("C0")</strong>
+                        <strong>@M(u.ValorSuscripcion, u.MonedaCodigo)</strong>
                         <small class="d-block text-muted text-capitalize">@u.CicloSuscripcion</small>
-                        <small class="d-block text-muted">Pagado total: @u.TotalPagadoSuscripcion.ToString("C0")</small>
+                        <small class="d-block text-muted">Pagado total: @totalPagadoUsuario</small>
                     </td>
                     <td>
                         @if (u.ProximoPago.HasValue)
@@ -107,7 +125,8 @@
                                         estadoSuscripcion = u.EstadoSuscripcion, notasSuscripcion = u.NotasSuscripcion,
                                         permisoGastos = u.PermisoGastos, permisoPrestamos = u.PermisoPrestamos,
                                         permisoInversiones = u.PermisoInversiones, permisoDirectivo = u.PermisoDirectivo,
-                                        permisoAsistente = u.PermisoAsistente, permisoCalendario = u.PermisoCalendario
+                                        permisoAsistente = u.PermisoAsistente, permisoCalendario = u.PermisoCalendario,
+                                        idioma = u.Idioma, monedaCodigo = u.MonedaCodigo, zonaHoraria = u.ZonaHoraria
                                     }))'>
                                 <i class="bi bi-pencil"></i>
                             </button>
@@ -131,7 +150,7 @@
                                         {
                                             <tr>
                                                 <td>@p.FechaPago.ToString("yyyy-MM-dd")</td>
-                                                <td>@p.Monto.ToString("C0")</td>
+                                                <td>@M(p.Monto, p.MonedaCodigo)</td>
                                                 <td>@p.PeriodoCubierto</td>
                                                 <td>@p.Metodo</td>
                                                 <td>@p.Referencia</td>
@@ -223,6 +242,28 @@
                             <label class="form-check-label" for="usActivo">Acceso activo</label>
                         </div>
                     </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Idioma</label>
+                        <select name="idioma" id="usIdioma" class="form-select">
+                            @foreach (var idioma in Model.Idiomas)
+                            {
+                                <option value="@idioma.Codigo">@idioma.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Moneda base</label>
+                        <select name="monedaCodigo" id="usMonedaCodigo" class="form-select">
+                            @foreach (var moneda in Model.Monedas)
+                            {
+                                <option value="@moneda.Codigo">@moneda.Codigo - @moneda.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Zona horaria</label>
+                        <input name="zonaHoraria" id="usZonaHoraria" class="form-control" maxlength="80" value="America/Bogota" />
+                    </div>
                     <div class="col-12">
                         <label class="form-label">Notas internas de suscripcion</label>
                         <textarea name="notasSuscripcion" id="usNotasSuscripcion" class="form-control" maxlength="500" rows="2"></textarea>
@@ -300,6 +341,9 @@
         document.getElementById('usProximoPago').value = hoy;
         document.getElementById('usDiasGracia').value = 3;
         document.getElementById('usEstadoSuscripcion').value = 'activa';
+        document.getElementById('usIdioma').value = 'es';
+        document.getElementById('usMonedaCodigo').value = 'COP';
+        document.getElementById('usZonaHoraria').value = 'America/Bogota';
         document.getElementById('usNotasSuscripcion').value = '';
         document.getElementById('usPermisoGastos').checked = true;
         document.getElementById('usPermisoPrestamos').checked = true;
@@ -325,6 +369,9 @@
         document.getElementById('usProximoPago').value = u.proximoPago || '';
         document.getElementById('usDiasGracia').value = u.diasGracia ?? 3;
         document.getElementById('usEstadoSuscripcion').value = u.estadoSuscripcion || 'activa';
+        document.getElementById('usIdioma').value = u.idioma || 'es';
+        document.getElementById('usMonedaCodigo').value = u.monedaCodigo || 'COP';
+        document.getElementById('usZonaHoraria').value = u.zonaHoraria || 'America/Bogota';
         document.getElementById('usNotasSuscripcion').value = u.notasSuscripcion || '';
         document.getElementById('usPermisoGastos').checked = !!u.permisoGastos;
         document.getElementById('usPermisoPrestamos').checked = !!u.permisoPrestamos;

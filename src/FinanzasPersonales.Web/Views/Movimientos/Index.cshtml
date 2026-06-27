@@ -1,4 +1,5 @@
 @model MovimientosIndexVm
+@inject PreferenciasUsuarioService Money
 @{
     ViewBag.Titulo = "Movimientos - Finanzas Personales";
     var cuentasDinero = Model.Cuentas.Where(c => c.Tipo != "tarjeta_credito").ToList();
@@ -13,6 +14,7 @@
     var anioD = new DateTime(hoy.Year, 1, 1);
     var anioH = new DateTime(hoy.Year, 12, 31);
     string F(DateTime f) => f.ToString("yyyy-MM-dd");
+    string M(decimal valor, string moneda) => Money.FormatoMoneda(valor, moneda);
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -103,16 +105,16 @@
 
 <div class="row g-2 mb-3 text-center">
     <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2">
-        <div class="small text-muted">Ingresos</div><div class="fw-bold text-success">@Model.TotalIngresos.ToString("C0")</div>
+        <div class="small text-muted">Ingresos</div><div class="fw-bold text-success">@M(Model.TotalIngresos, Model.MonedaBase)</div>
     </div></div></div>
     <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2">
-        <div class="small text-muted">Gastos</div><div class="fw-bold text-danger">@Model.TotalGastos.ToString("C0")</div>
+        <div class="small text-muted">Gastos</div><div class="fw-bold text-danger">@M(Model.TotalGastos, Model.MonedaBase)</div>
     </div></div></div>
     <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2">
-        <div class="small text-muted">Pagos tarjeta</div><div class="fw-bold text-warning">@Model.TotalPagosTarjeta.ToString("C0")</div>
+        <div class="small text-muted">Pagos tarjeta</div><div class="fw-bold text-warning">@M(Model.TotalPagosTarjeta, Model.MonedaBase)</div>
     </div></div></div>
     <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2">
-        <div class="small text-muted">Transferencias</div><div class="fw-bold text-info">@Model.TotalTransferencias.ToString("C0")</div>
+        <div class="small text-muted">Transferencias</div><div class="fw-bold text-info">@M(Model.TotalTransferencias, Model.MonedaBase)</div>
     </div></div></div>
 </div>
 
@@ -147,15 +149,25 @@
                         }
                     </td>
                     <td class="d-none d-md-table-cell text-muted small">@m.Descripcion</td>
-                    <td class="text-end fw-bold text-nowrap @(m.Tipo == "ingreso" ? "text-success" : m.Tipo == "gasto" ? "text-danger" : m.Tipo == "transferencia" ? "text-info" : "text-warning")">
-                        @((m.Tipo == "ingreso" ? "+" : m.Tipo == "transferencia" ? "" : "-") + m.Monto.ToString("C0"))
+                    <td class="text-end text-nowrap @(m.Tipo == "ingreso" ? "text-success" : m.Tipo == "gasto" ? "text-danger" : m.Tipo == "transferencia" ? "text-info" : "text-warning")">
+                        @{
+                            var signo = m.Tipo == "ingreso" ? "+" : m.Tipo == "transferencia" ? "" : "-";
+                            var monedaOrigen = string.IsNullOrWhiteSpace(m.MonedaCodigo) ? Model.MonedaBase : m.MonedaCodigo;
+                            var monedaBase = string.IsNullOrWhiteSpace(m.MonedaBaseCodigo) ? Model.MonedaBase : m.MonedaBaseCodigo;
+                        }
+                        <strong>@(signo + M(m.MontoOriginal, monedaOrigen))</strong>
+                        @if (monedaOrigen != monedaBase)
+                        {
+                            <small class="d-block text-muted">@M(m.Monto, monedaBase) - tasa @m.TasaConversion.ToString("0.####")</small>
+                        }
                     </td>
                     <td class="text-end text-nowrap">
                         <button class="btn btn-sm btn-outline-secondary" title="Editar"
                                 onclick='abrirEditar(@System.Text.Json.JsonSerializer.Serialize(new {
                                     id = m.Id, fecha = m.Fecha.ToString("yyyy-MM-dd"), tipo = m.Tipo,
                                     cuentaId = m.CuentaId, cuentaDestinoId = m.CuentaDestinoId,
-                                    categoriaId = m.CategoriaId, descripcion = m.Descripcion, monto = m.Monto
+                                    categoriaId = m.CategoriaId, descripcion = m.Descripcion, monto = m.MontoOriginal,
+                                    monedaCodigo = m.MonedaCodigo, tasaConversion = m.TasaConversion
                                 }))'><i class="bi bi-pencil"></i></button>
                         <form class="d-inline" method="post" asp-action="Eliminar"
                               onsubmit="return confirm('Eliminar este movimiento?');">
@@ -210,6 +222,23 @@
                         <input type="number" name="monto" id="mvMonto" class="form-control" min="1" step="0.01" inputmode="decimal" required />
                     </div>
                 </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Moneda</label>
+                        <select name="monedaCodigo" id="mvMoneda" class="form-select" onchange="cambioMoneda()">
+                            @foreach (var moneda in Model.Monedas)
+                            {
+                                if (moneda.Codigo == Model.MonedaBase) { <option value="@moneda.Codigo" selected>@moneda.Codigo - @moneda.Nombre</option> }
+                                else { <option value="@moneda.Codigo">@moneda.Codigo - @moneda.Nombre</option> }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Tasa manual</label>
+                        <input type="number" name="tasaConversion" id="mvTasaConversion" class="form-control" min="0" step="0.000001" inputmode="decimal" placeholder="Opcional" />
+                        <div class="form-text" id="mvAyudaTasa">Moneda base: @Model.MonedaBase.</div>
+                    </div>
+                </div>
                 <div class="mb-3">
                     <label class="form-label" id="etiquetaCuenta">Medio de pago</label>
                     <select name="cuentaId" id="mvCuenta" class="form-select" required></select>
@@ -241,11 +270,25 @@
         Model.Cuentas.Select(c => new { id = c.Id, nombre = c.Nombre, tipo = c.Tipo })));
     const todasCategorias = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
         Model.Categorias.Select(c => new { id = c.Id, nombre = c.Nombre, tipo = c.Tipo })));
+    const monedaBase = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.MonedaBase));
 
     const modal = new bootstrap.Modal(document.getElementById('modalMovimiento'));
 
     function tipoSeleccionado() {
         return document.querySelector('input[name="tipo"]:checked').value;
+    }
+
+    function cambioMoneda() {
+        const moneda = document.getElementById('mvMoneda').value;
+        const tasa = document.getElementById('mvTasaConversion');
+        const ayuda = document.getElementById('mvAyudaTasa');
+        const requiereConversion = moneda !== monedaBase;
+        tasa.disabled = !requiereConversion;
+        tasa.placeholder = requiereConversion ? `1 ${moneda} en ${monedaBase}` : 'No aplica';
+        if (!requiereConversion) tasa.value = '';
+        ayuda.textContent = requiereConversion
+            ? `Si dejas la tasa vacia, el sistema intenta consultar la tasa del dia y la guarda.`
+            : `Moneda base del usuario: ${monedaBase}.`;
     }
 
     function cambioTipo(cuentaSel, categoriaSel, destinoSel) {
@@ -298,9 +341,12 @@
         document.getElementById('mvTitulo').textContent = 'Registrar movimiento';
         document.getElementById('mvFecha').value = new Date().toISOString().slice(0, 10);
         document.getElementById('mvMonto').value = '';
+        document.getElementById('mvMoneda').value = monedaBase;
+        document.getElementById('mvTasaConversion').value = '';
         document.getElementById('mvDescripcion').value = '';
         document.getElementById('tipoGasto').checked = true;
         cambioTipo();
+        cambioMoneda();
         modal.show();
     }
 
@@ -309,12 +355,15 @@
         document.getElementById('mvTitulo').textContent = 'Editar movimiento';
         document.getElementById('mvFecha').value = m.fecha;
         document.getElementById('mvMonto').value = m.monto;
+        document.getElementById('mvMoneda').value = m.monedaCodigo || monedaBase;
+        document.getElementById('mvTasaConversion').value = (m.monedaCodigo && m.monedaCodigo !== monedaBase && m.tasaConversion !== 1) ? m.tasaConversion : '';
         document.getElementById('mvDescripcion').value = m.descripcion || '';
         document.getElementById(
             m.tipo === 'ingreso' ? 'tipoIngreso'
             : m.tipo === 'pago_tarjeta' ? 'tipoPago'
             : m.tipo === 'transferencia' ? 'tipoTransfer' : 'tipoGasto').checked = true;
         cambioTipo(m.cuentaId, m.categoriaId, m.cuentaDestinoId);
+        cambioMoneda();
         modal.show();
     }
 

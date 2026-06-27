@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
     permiso_directivo BOOLEAN NOT NULL DEFAULT FALSE,
     permiso_asistente BOOLEAN NOT NULL DEFAULT FALSE,
     permiso_calendario BOOLEAN NOT NULL DEFAULT FALSE,
+    idioma VARCHAR(5) NOT NULL DEFAULT 'es',
+    moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+    zona_horaria VARCHAR(80) NOT NULL DEFAULT 'America/Bogota',
     creado_en       TIMESTAMP    NOT NULL DEFAULT NOW()
 );
 
@@ -52,6 +55,7 @@ CREATE TABLE IF NOT EXISTS usuario_pagos_suscripcion (
     usuario_id       INT           NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
     fecha_pago       DATE          NOT NULL,
     monto            NUMERIC(14,2) NOT NULL CHECK (monto > 0),
+    moneda_codigo    VARCHAR(3)    NOT NULL DEFAULT 'COP',
     periodo_cubierto VARCHAR(80)   NOT NULL,
     metodo           VARCHAR(60)   NULL,
     referencia       VARCHAR(100)  NULL,
@@ -67,6 +71,38 @@ CREATE TABLE IF NOT EXISTS configuraciones_sistema (
     valor          TEXT NULL,
     protegido      BOOLEAN NOT NULL DEFAULT FALSE,
     actualizado_en TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS monedas (
+    codigo    VARCHAR(3) PRIMARY KEY,
+    nombre    VARCHAR(80) NOT NULL,
+    simbolo   VARCHAR(8)  NOT NULL,
+    decimales INT         NOT NULL DEFAULT 2,
+    cultura   VARCHAR(12) NOT NULL,
+    activa    BOOLEAN     NOT NULL DEFAULT TRUE
+);
+
+INSERT INTO monedas(codigo,nombre,simbolo,decimales,cultura,activa) VALUES
+    ('COP','Peso colombiano','$',0,'es-CO',TRUE),
+    ('USD','US Dollar','US$',2,'en-US',TRUE),
+    ('EUR','Euro','EUR',2,'es-ES',TRUE),
+    ('BRL','Real brasileiro','R$',2,'pt-BR',TRUE)
+ON CONFLICT(codigo) DO UPDATE
+SET nombre=EXCLUDED.nombre,
+    simbolo=EXCLUDED.simbolo,
+    decimales=EXCLUDED.decimales,
+    cultura=EXCLUDED.cultura,
+    activa=EXCLUDED.activa;
+
+CREATE TABLE IF NOT EXISTS tasas_cambio (
+    id              SERIAL PRIMARY KEY,
+    fecha           DATE          NOT NULL,
+    moneda_origen   VARCHAR(3)    NOT NULL REFERENCES monedas(codigo),
+    moneda_destino  VARCHAR(3)    NOT NULL REFERENCES monedas(codigo),
+    tasa            NUMERIC(20,8) NOT NULL CHECK(tasa > 0),
+    fuente          VARCHAR(40)   NOT NULL DEFAULT 'manual',
+    creado_en       TIMESTAMP     NOT NULL DEFAULT NOW(),
+    UNIQUE(fecha, moneda_origen, moneda_destino)
 );
 
 -- Cuentas / medios de pago del usuario.
@@ -103,6 +139,9 @@ CREATE TABLE IF NOT EXISTS gastos_periodicos (
     categoria_id     INT           NOT NULL REFERENCES categorias(id),
     cuenta_id        INT           NULL REFERENCES cuentas(id),
     monto_estimado   NUMERIC(14,2) NOT NULL CHECK (monto_estimado > 0),
+    monto_original   NUMERIC(14,2) NULL,
+    moneda_codigo    VARCHAR(3)    NOT NULL DEFAULT 'COP',
+    tasa_conversion  NUMERIC(20,8) NOT NULL DEFAULT 1,
     frecuencia_meses INT           NOT NULL DEFAULT 1 CHECK (frecuencia_meses BETWEEN 1 AND 60),
     proxima_fecha    DATE          NOT NULL,
     activo           BOOLEAN       NOT NULL DEFAULT TRUE
@@ -130,6 +169,10 @@ CREATE TABLE IF NOT EXISTS movimientos (
     categoria_id       INT           NULL REFERENCES categorias(id),
     descripcion        VARCHAR(200)  NULL,
     monto              NUMERIC(14,2) NOT NULL CHECK (monto > 0),
+    monto_original     NUMERIC(14,2) NULL,
+    moneda_codigo      VARCHAR(3)    NOT NULL DEFAULT 'COP',
+    tasa_conversion    NUMERIC(20,8) NOT NULL DEFAULT 1,
+    moneda_base_codigo VARCHAR(3)    NOT NULL DEFAULT 'COP',
     gasto_periodico_id INT           NULL REFERENCES gastos_periodicos(id),
     creado_en          TIMESTAMP     NOT NULL DEFAULT NOW()
 );
@@ -140,6 +183,7 @@ CREATE TABLE IF NOT EXISTS presupuestos (
     usuario_id    INT           NOT NULL REFERENCES usuarios(id),
     categoria_id  INT           NOT NULL REFERENCES categorias(id),
     monto_mensual NUMERIC(14,2) NOT NULL CHECK (monto_mensual > 0),
+    moneda_codigo VARCHAR(3)    NOT NULL DEFAULT 'COP',
     UNIQUE (usuario_id, categoria_id)
 );
 
@@ -154,6 +198,7 @@ CREATE TABLE IF NOT EXISTS metas_ahorro (
     usuario_id     INT           NOT NULL REFERENCES usuarios(id),
     nombre         VARCHAR(100)  NOT NULL,
     monto_objetivo NUMERIC(14,2) NOT NULL CHECK (monto_objetivo > 0),
+    moneda_codigo  VARCHAR(3)    NOT NULL DEFAULT 'COP',
     fecha_objetivo DATE          NULL,
     color          VARCHAR(7)    NOT NULL DEFAULT '#6f42c1',
     activo         BOOLEAN       NOT NULL DEFAULT TRUE,
@@ -189,14 +234,15 @@ CREATE INDEX IF NOT EXISTS idx_gastos_periodicos_usuario_tipo_fecha ON gastos_pe
 CREATE INDEX IF NOT EXISTS idx_presupuestos_usuario_categoria ON presupuestos (usuario_id, categoria_id);
 CREATE INDEX IF NOT EXISTS idx_aportes_meta_usuario_meta_fecha ON aportes_meta (usuario_id, meta_ahorro_id, fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_metas_usuario_activo_fecha ON metas_ahorro (usuario_id, activo, fecha_objetivo);
+CREATE INDEX IF NOT EXISTS idx_tasas_cambio_fecha_monedas ON tasas_cambio (fecha, moneda_origen, moneda_destino);
 
 -- El usuario administrador inicial (admin / admin123) lo crea la aplicacion
 -- automaticamente al arrancar si la tabla usuarios esta vacia.
 
 -- Modulo de prestamos (ver modulo_prestamos.sql para el detalle de cada campo)
 CREATE TABLE IF NOT EXISTS personas (id SERIAL PRIMARY KEY, usuario_id INT NOT NULL REFERENCES usuarios(id), nombre VARCHAR(100) NOT NULL, telefono VARCHAR(30) NULL, email VARCHAR(100) NULL, documento VARCHAR(30) NULL, notas VARCHAR(300) NULL, activo BOOLEAN NOT NULL DEFAULT TRUE);
-CREATE TABLE IF NOT EXISTS prestamos (id SERIAL PRIMARY KEY, usuario_id INT NOT NULL REFERENCES usuarios(id), persona_id INT NOT NULL REFERENCES personas(id), fecha DATE NOT NULL, capital NUMERIC(14,2) NOT NULL CHECK (capital > 0), tasa_mensual NUMERIC(6,3) NOT NULL CHECK (tasa_mensual >= 0), dia_pago_interes INT NULL CHECK (dia_pago_interes BETWEEN 1 AND 31), fecha_pago_capital DATE NULL, notas VARCHAR(300) NULL, estado VARCHAR(10) NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','pagado')));
-CREATE TABLE IF NOT EXISTS prestamo_pagos (id SERIAL PRIMARY KEY, usuario_id INT NOT NULL REFERENCES usuarios(id), prestamo_id INT NOT NULL REFERENCES prestamos(id), fecha DATE NOT NULL, tipo VARCHAR(15) NOT NULL CHECK (tipo IN ('abono_capital','pago_interes')), monto NUMERIC(14,2) NOT NULL CHECK (monto > 0), notas VARCHAR(200) NULL, creado_en TIMESTAMP NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS prestamos (id SERIAL PRIMARY KEY, usuario_id INT NOT NULL REFERENCES usuarios(id), persona_id INT NOT NULL REFERENCES personas(id), fecha DATE NOT NULL, capital NUMERIC(14,2) NOT NULL CHECK (capital > 0), capital_original NUMERIC(14,2) NULL, moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP', tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1, tasa_mensual NUMERIC(6,3) NOT NULL CHECK (tasa_mensual >= 0), dia_pago_interes INT NULL CHECK (dia_pago_interes BETWEEN 1 AND 31), fecha_pago_capital DATE NULL, notas VARCHAR(300) NULL, estado VARCHAR(10) NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','pagado')));
+CREATE TABLE IF NOT EXISTS prestamo_pagos (id SERIAL PRIMARY KEY, usuario_id INT NOT NULL REFERENCES usuarios(id), prestamo_id INT NOT NULL REFERENCES prestamos(id), fecha DATE NOT NULL, tipo VARCHAR(15) NOT NULL CHECK (tipo IN ('abono_capital','pago_interes')), monto NUMERIC(14,2) NOT NULL CHECK (monto > 0), monto_original NUMERIC(14,2) NULL, moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP', tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1, moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP', notas VARCHAR(200) NULL, creado_en TIMESTAMP NOT NULL DEFAULT NOW());
 CREATE INDEX IF NOT EXISTS idx_personas_usuario ON personas (usuario_id);
 CREATE INDEX IF NOT EXISTS idx_prestamos_usuario ON prestamos (usuario_id);
 CREATE INDEX IF NOT EXISTS idx_prestamo_pagos_prestamo ON prestamo_pagos (prestamo_id);
@@ -227,6 +273,7 @@ CREATE TABLE IF NOT EXISTS inversiones (
     tipo_inversion_id    INT           NULL REFERENCES tipos_inversion(id),
     fecha_inicio         DATE          NOT NULL,
     capital_inicial      NUMERIC(16,2) NOT NULL CHECK (capital_inicial > 0),
+    capital_original     NUMERIC(16,2) NULL,
     tasa                 NUMERIC(9,4)  NOT NULL DEFAULT 0 CHECK (tasa >= 0),
     periodo_tasa         VARCHAR(10)   NOT NULL DEFAULT 'anual' CHECK (periodo_tasa IN ('mensual','anual')),
     tipo_rendimiento     VARCHAR(10)   NOT NULL DEFAULT 'fijo' CHECK (tipo_rendimiento IN ('fijo','variable')),
@@ -235,6 +282,9 @@ CREATE TABLE IF NOT EXISTS inversiones (
     penalidad_retiro     NUMERIC(7,3)  NULL CHECK (penalidad_retiro BETWEEN 0 AND 100),
     renovacion_automatica BOOLEAN      NOT NULL DEFAULT FALSE,
     moneda               VARCHAR(5)    NOT NULL DEFAULT 'COP',
+    moneda_codigo        VARCHAR(3)    NOT NULL DEFAULT 'COP',
+    tasa_conversion      NUMERIC(20,8) NOT NULL DEFAULT 1,
+    moneda_base_codigo   VARCHAR(3)    NOT NULL DEFAULT 'COP',
     color                VARCHAR(7)    NOT NULL DEFAULT '#D4AF37',
     icono                VARCHAR(50)   NOT NULL DEFAULT 'bi-graph-up-arrow',
     notas                VARCHAR(500)  NULL,
@@ -249,6 +299,10 @@ CREATE TABLE IF NOT EXISTS inversion_movimientos (
     fecha        DATE          NOT NULL,
     tipo         VARCHAR(15)   NOT NULL CHECK (tipo IN ('aporte','retiro','rendimiento','costo')),
     monto        NUMERIC(16,2) NOT NULL CHECK (monto > 0),
+    monto_original NUMERIC(16,2) NULL,
+    moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+    tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
+    moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
     notas        VARCHAR(250)  NULL,
     creado_en    TIMESTAMP     NOT NULL DEFAULT NOW()
 );
@@ -259,6 +313,10 @@ CREATE TABLE IF NOT EXISTS inversion_valoraciones (
     inversion_id INT           NOT NULL REFERENCES inversiones(id) ON DELETE CASCADE,
     fecha        DATE          NOT NULL,
     valor        NUMERIC(16,2) NOT NULL CHECK (valor >= 0),
+    valor_original NUMERIC(16,2) NULL,
+    moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+    tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
+    moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
     notas        VARCHAR(250)  NULL,
     creado_en    TIMESTAMP     NOT NULL DEFAULT NOW()
 );

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Threading.RateLimiting;
 using Dapper;
 using FinanzasPersonales.Web.Data;
+using FinanzasPersonales.Web.Middleware;
 using FinanzasPersonales.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
@@ -33,7 +34,9 @@ builder.Services.AddAntiforgery(opt =>
 builder.Services.AddSingleton<Db>();
 builder.Services.AddSingleton<AsistenteFinancieroService>();
 builder.Services.AddSingleton<EmailService>();
+builder.Services.AddSingleton<TraduccionService>();
 builder.Services.AddHttpClient<WhatsAppService>();
+builder.Services.AddHttpClient<PreferenciasUsuarioService>();
 builder.Services.AddRateLimiter(opt =>
 {
     opt.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -125,11 +128,12 @@ app.Use(async (context, next) =>
 
 // Cultura es-CO para formato de pesos: $ 1.234.567
 var cultura = new CultureInfo("es-CO");
+var culturasSoportadas = new[] { "es-CO", "en-US", "pt-BR" }.Select(x => new CultureInfo(x)).ToArray();
 app.UseRequestLocalization(new RequestLocalizationOptions
 {
     DefaultRequestCulture = new RequestCulture(cultura),
-    SupportedCultures = new[] { cultura },
-    SupportedUICultures = new[] { cultura }
+    SupportedCultures = culturasSoportadas,
+    SupportedUICultures = culturasSoportadas
 });
 
 app.UseStaticFiles();
@@ -137,6 +141,7 @@ app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<TraduccionHtmlMiddleware>();
 
 app.MapControllerRoute(
     name: "default",
@@ -169,6 +174,94 @@ using (var scope = app.Services.CreateScope())
         con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS permiso_directivo BOOLEAN NOT NULL DEFAULT FALSE");
         con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS permiso_asistente BOOLEAN NOT NULL DEFAULT FALSE");
         con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS permiso_calendario BOOLEAN NOT NULL DEFAULT FALSE");
+        con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS idioma VARCHAR(5) NOT NULL DEFAULT 'es'");
+        con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP'");
+        con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS zona_horaria VARCHAR(80) NOT NULL DEFAULT 'America/Bogota'");
+        con.Execute(
+            @"CREATE TABLE IF NOT EXISTS monedas (
+                  codigo VARCHAR(3) PRIMARY KEY,
+                  nombre VARCHAR(80) NOT NULL,
+                  simbolo VARCHAR(8) NOT NULL,
+                  decimales INT NOT NULL DEFAULT 2,
+                  cultura VARCHAR(12) NOT NULL,
+                  activa BOOLEAN NOT NULL DEFAULT TRUE
+              );
+              INSERT INTO monedas(codigo,nombre,simbolo,decimales,cultura,activa) VALUES
+                ('COP','Peso colombiano','$',0,'es-CO',TRUE),
+                ('USD','US Dollar','US$',2,'en-US',TRUE),
+                ('EUR','Euro','EUR',2,'es-ES',TRUE),
+                ('BRL','Real brasileiro','R$',2,'pt-BR',TRUE)
+              ON CONFLICT(codigo) DO UPDATE
+              SET nombre=EXCLUDED.nombre, simbolo=EXCLUDED.simbolo, decimales=EXCLUDED.decimales,
+                  cultura=EXCLUDED.cultura, activa=EXCLUDED.activa;
+              CREATE TABLE IF NOT EXISTS tasas_cambio (
+                  id SERIAL PRIMARY KEY,
+                  fecha DATE NOT NULL,
+                  moneda_origen VARCHAR(3) NOT NULL REFERENCES monedas(codigo),
+                  moneda_destino VARCHAR(3) NOT NULL REFERENCES monedas(codigo),
+                  tasa NUMERIC(20,8) NOT NULL CHECK(tasa > 0),
+                  fuente VARCHAR(40) NOT NULL DEFAULT 'manual',
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW(),
+                  UNIQUE(fecha, moneda_origen, moneda_destino)
+              )");
+        con.Execute(
+            @"DO $$
+              BEGIN
+                IF to_regclass('public.movimientos') IS NOT NULL THEN
+                  ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS monto_original NUMERIC(14,2) NULL;
+                  ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
+                  ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  UPDATE movimientos SET monto_original=monto WHERE monto_original IS NULL;
+                END IF;
+                IF to_regclass('public.prestamos') IS NOT NULL THEN
+                  ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
+                  ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS capital_original NUMERIC(14,2) NULL;
+                  UPDATE prestamos SET capital_original=capital WHERE capital_original IS NULL;
+                END IF;
+                IF to_regclass('public.prestamo_pagos') IS NOT NULL THEN
+                  ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS monto_original NUMERIC(14,2) NULL;
+                  ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
+                  ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  UPDATE prestamo_pagos SET monto_original=monto WHERE monto_original IS NULL;
+                END IF;
+                IF to_regclass('public.inversiones') IS NOT NULL THEN
+                  ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS capital_original NUMERIC(16,2) NULL;
+                  ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
+                  ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  UPDATE inversiones SET capital_original=capital_inicial WHERE capital_original IS NULL;
+                  UPDATE inversiones SET moneda_codigo=COALESCE(NULLIF(moneda,''),'COP') WHERE moneda_codigo IS NULL OR moneda_codigo='';
+                END IF;
+                IF to_regclass('public.inversion_movimientos') IS NOT NULL THEN
+                  ALTER TABLE inversion_movimientos ADD COLUMN IF NOT EXISTS monto_original NUMERIC(16,2) NULL;
+                  ALTER TABLE inversion_movimientos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE inversion_movimientos ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
+                  ALTER TABLE inversion_movimientos ADD COLUMN IF NOT EXISTS moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  UPDATE inversion_movimientos SET monto_original=monto WHERE monto_original IS NULL;
+                END IF;
+                IF to_regclass('public.inversion_valoraciones') IS NOT NULL THEN
+                  ALTER TABLE inversion_valoraciones ADD COLUMN IF NOT EXISTS valor_original NUMERIC(16,2) NULL;
+                  ALTER TABLE inversion_valoraciones ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE inversion_valoraciones ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
+                  ALTER TABLE inversion_valoraciones ADD COLUMN IF NOT EXISTS moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  UPDATE inversion_valoraciones SET valor_original=valor WHERE valor_original IS NULL;
+                END IF;
+                IF to_regclass('public.gastos_periodicos') IS NOT NULL THEN
+                  ALTER TABLE gastos_periodicos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE gastos_periodicos ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
+                  ALTER TABLE gastos_periodicos ADD COLUMN IF NOT EXISTS monto_original NUMERIC(14,2) NULL;
+                  UPDATE gastos_periodicos SET monto_original=monto_estimado WHERE monto_original IS NULL;
+                END IF;
+                IF to_regclass('public.metas_ahorro') IS NOT NULL THEN
+                  ALTER TABLE metas_ahorro ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                END IF;
+                IF to_regclass('public.presupuestos') IS NOT NULL THEN
+                  ALTER TABLE presupuestos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                END IF;
+              END $$");
         con.Execute(
             @"UPDATE usuarios SET permiso_gastos=TRUE, permiso_prestamos=TRUE, permiso_inversiones=TRUE,
                      permiso_directivo=TRUE, permiso_asistente=TRUE, permiso_calendario=TRUE
@@ -202,6 +295,7 @@ using (var scope = app.Services.CreateScope())
                   usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
                   fecha_pago DATE NOT NULL,
                   monto NUMERIC(14,2) NOT NULL CHECK (monto > 0),
+                  moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
                   periodo_cubierto VARCHAR(80) NOT NULL,
                   metodo VARCHAR(60) NULL,
                   referencia VARCHAR(100) NULL,
@@ -210,6 +304,7 @@ using (var scope = app.Services.CreateScope())
               );
               CREATE INDEX IF NOT EXISTS idx_usuario_pagos_suscripcion_usuario_fecha
               ON usuario_pagos_suscripcion (usuario_id, fecha_pago DESC)");
+        con.Execute("ALTER TABLE usuario_pagos_suscripcion ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP'");
         con.Execute(
             @"CREATE TABLE IF NOT EXISTS configuraciones_sistema (
                   clave VARCHAR(100) PRIMARY KEY,
@@ -276,6 +371,7 @@ using (var scope = app.Services.CreateScope())
                   tipo_inversion_id INT NULL REFERENCES tipos_inversion(id),
                   fecha_inicio DATE NOT NULL,
                   capital_inicial NUMERIC(16,2) NOT NULL CHECK (capital_inicial > 0),
+                  capital_original NUMERIC(16,2) NULL,
                   tasa NUMERIC(9,4) NOT NULL DEFAULT 0 CHECK (tasa >= 0),
                   periodo_tasa VARCHAR(10) NOT NULL DEFAULT 'anual' CHECK (periodo_tasa IN ('mensual','anual')),
                   tipo_rendimiento VARCHAR(10) NOT NULL DEFAULT 'fijo' CHECK (tipo_rendimiento IN ('fijo','variable')),
@@ -284,6 +380,9 @@ using (var scope = app.Services.CreateScope())
                   penalidad_retiro NUMERIC(7,3) NULL CHECK (penalidad_retiro BETWEEN 0 AND 100),
                   renovacion_automatica BOOLEAN NOT NULL DEFAULT FALSE,
                   moneda VARCHAR(5) NOT NULL DEFAULT 'COP',
+                  moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+                  tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
+                  moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
                   color VARCHAR(7) NOT NULL DEFAULT '#D4AF37',
                   icono VARCHAR(50) NOT NULL DEFAULT 'bi-graph-up-arrow',
                   notas VARCHAR(500) NULL,
@@ -297,6 +396,10 @@ using (var scope = app.Services.CreateScope())
                   fecha DATE NOT NULL,
                   tipo VARCHAR(15) NOT NULL CHECK (tipo IN ('aporte','retiro','rendimiento','costo')),
                   monto NUMERIC(16,2) NOT NULL CHECK (monto > 0),
+                  monto_original NUMERIC(16,2) NULL,
+                  moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+                  tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
+                  moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
                   notas VARCHAR(250) NULL,
                   creado_en TIMESTAMP NOT NULL DEFAULT NOW()
               );
@@ -306,6 +409,10 @@ using (var scope = app.Services.CreateScope())
                   inversion_id INT NOT NULL REFERENCES inversiones(id) ON DELETE CASCADE,
                   fecha DATE NOT NULL,
                   valor NUMERIC(16,2) NOT NULL CHECK (valor >= 0),
+                  valor_original NUMERIC(16,2) NULL,
+                  moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+                  tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
+                  moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
                   notas VARCHAR(250) NULL,
                   creado_en TIMESTAMP NOT NULL DEFAULT NOW()
               );

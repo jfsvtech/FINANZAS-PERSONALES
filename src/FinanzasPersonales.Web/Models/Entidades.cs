@@ -31,9 +31,40 @@ public class Usuario
     public bool PermisoDirectivo { get; set; }
     public bool PermisoAsistente { get; set; }
     public bool PermisoCalendario { get; set; }
+    public string Idioma { get; set; } = "es";
+    public string MonedaCodigo { get; set; } = "COP";
+    public string ZonaHoraria { get; set; } = "America/Bogota";
     public int DiasMora => ProximoPago.HasValue && DateTime.Today > ProximoPago.Value.Date.AddDays(DiasGracia)
         ? (DateTime.Today - ProximoPago.Value.Date.AddDays(DiasGracia)).Days
         : 0;
+}
+
+public class Moneda
+{
+    public string Codigo { get; set; } = "COP";
+    public string Nombre { get; set; } = "";
+    public string Simbolo { get; set; } = "$";
+    public int Decimales { get; set; }
+    public string Cultura { get; set; } = "es-CO";
+    public bool Activa { get; set; } = true;
+}
+
+public class IdiomaDisponible
+{
+    public string Codigo { get; set; } = "es";
+    public string Nombre { get; set; } = "Español";
+    public string Cultura { get; set; } = "es-CO";
+}
+
+public class TasaCambio
+{
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string MonedaOrigen { get; set; } = "USD";
+    public string MonedaDestino { get; set; } = "COP";
+    public decimal Tasa { get; set; }
+    public string Fuente { get; set; } = "";
+    public DateTime CreadoEn { get; set; }
 }
 
 public class PagoSuscripcion
@@ -42,6 +73,7 @@ public class PagoSuscripcion
     public int UsuarioId { get; set; }
     public DateTime FechaPago { get; set; }
     public decimal Monto { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
     public string PeriodoCubierto { get; set; } = "";
     public string Metodo { get; set; } = "";
     public string? Referencia { get; set; }
@@ -53,6 +85,8 @@ public class UsuariosAdminVm
 {
     public List<Usuario> Usuarios { get; set; } = new();
     public List<PagoSuscripcion> Pagos { get; set; } = new();
+    public List<Moneda> Monedas { get; set; } = new();
+    public List<IdiomaDisponible> Idiomas { get; set; } = new();
     public decimal IngresoMensualEsperado => Usuarios.Where(x => x.Activo && x.EstadoSuscripcion == "activa").Sum(x => x.ValorSuscripcion);
     public decimal PagadoEsteMes => Pagos.Where(x => x.FechaPago.Year == DateTime.Today.Year && x.FechaPago.Month == DateTime.Today.Month).Sum(x => x.Monto);
     public int ClientesActivos => Usuarios.Count(x => x.Activo && x.EstadoSuscripcion == "activa");
@@ -102,6 +136,10 @@ public class Movimiento
     public int? CategoriaId { get; set; }
     public string? Descripcion { get; set; }
     public decimal Monto { get; set; }
+    public decimal MontoOriginal { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public decimal TasaConversion { get; set; } = 1;
+    public string MonedaBaseCodigo { get; set; } = "COP";
     public int? GastoPeriodicoId { get; set; }
 
     // Campos de presentacion (join)
@@ -262,6 +300,8 @@ public class MovimientosIndexVm
     public List<Movimiento> Movimientos { get; set; } = new();
     public List<Cuenta> Cuentas { get; set; } = new();
     public List<Categoria> Categorias { get; set; } = new();
+    public List<Moneda> Monedas { get; set; } = new();
+    public string MonedaBase { get; set; } = "COP";
     public DateTime Desde { get; set; }
     public DateTime Hasta { get; set; }
     public string? FiltroTipo { get; set; }
@@ -317,6 +357,9 @@ public class Prestamo
     public int PersonaId { get; set; }
     public DateTime Fecha { get; set; }
     public decimal Capital { get; set; }
+    public decimal? CapitalOriginal { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public decimal TasaConversion { get; set; } = 1;
     public decimal TasaMensual { get; set; } // % de interes mensual
     public int? DiaPagoInteres { get; set; }
     public DateTime? FechaPagoCapital { get; set; }
@@ -343,6 +386,10 @@ public class PrestamoPago
     public DateTime Fecha { get; set; }
     public string Tipo { get; set; } = "pago_interes"; // abono_capital | pago_interes
     public decimal Monto { get; set; }
+    public decimal MontoOriginal { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public decimal TasaConversion { get; set; } = 1;
+    public string MonedaBaseCodigo { get; set; } = "COP";
     public string? Notas { get; set; }
     public string TipoTexto => Tipo == "abono_capital" ? "Abono a capital" : "Pago de interes";
 }
@@ -351,6 +398,8 @@ public class PrestamosIndexVm
 {
     public List<Prestamo> Prestamos { get; set; } = new();
     public List<Persona> Personas { get; set; } = new();
+    public List<Moneda> Monedas { get; set; } = new();
+    public string MonedaBase { get; set; } = "COP";
     public int? FiltroPersonaId { get; set; }
     public string? FiltroEstado { get; set; }
     public DateTime? FiltroDesde { get; set; }
@@ -364,6 +413,8 @@ public class PrestamoDetalleVm
 {
     public Prestamo Prestamo { get; set; } = new();
     public List<PrestamoPago> Pagos { get; set; } = new();
+    public List<Moneda> Monedas { get; set; } = new();
+    public string MonedaBase { get; set; } = "COP";
 }
 
 public class PagoPersonaVm : PrestamoPago
@@ -654,6 +705,10 @@ public class Inversion
     public string? TipoIcono { get; set; }
     public DateTime FechaInicio { get; set; }
     public decimal CapitalInicial { get; set; }
+    public decimal CapitalOriginal { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public decimal TasaConversion { get; set; } = 1;
+    public string MonedaBaseCodigo { get; set; } = "COP";
     public decimal Tasa { get; set; }
     public string PeriodoTasa { get; set; } = "anual";
     public string TipoRendimiento { get; set; } = "fijo";
@@ -715,6 +770,10 @@ public class InversionMovimiento
     public DateTime Fecha { get; set; }
     public string Tipo { get; set; } = "aporte";
     public decimal Monto { get; set; }
+    public decimal MontoOriginal { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public decimal TasaConversion { get; set; } = 1;
+    public string MonedaBaseCodigo { get; set; } = "COP";
     public string? Notas { get; set; }
     public string TipoTexto => Tipo switch
     {
@@ -733,6 +792,10 @@ public class InversionValoracion
     public int InversionId { get; set; }
     public DateTime Fecha { get; set; }
     public decimal Valor { get; set; }
+    public decimal ValorOriginal { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public decimal TasaConversion { get; set; } = 1;
+    public string MonedaBaseCodigo { get; set; } = "COP";
     public string? Notas { get; set; }
 }
 
@@ -740,6 +803,8 @@ public class InversionesIndexVm
 {
     public List<Inversion> Inversiones { get; set; } = new();
     public List<TipoInversion> Tipos { get; set; } = new();
+    public List<Moneda> Monedas { get; set; } = new();
+    public string MonedaBase { get; set; } = "COP";
     public string? FiltroEstado { get; set; }
     public int? FiltroTipoId { get; set; }
     public List<Inversion> Activas => Inversiones.Where(x => x.Estado == "activa").ToList();
@@ -754,6 +819,8 @@ public class InversionDetalleVm
     public Inversion Inversion { get; set; } = new();
     public List<InversionMovimiento> Movimientos { get; set; } = new();
     public List<InversionValoracion> Valoraciones { get; set; } = new();
+    public List<Moneda> Monedas { get; set; } = new();
+    public string MonedaBase { get; set; } = "COP";
 }
 
 public class InversionSerieVm

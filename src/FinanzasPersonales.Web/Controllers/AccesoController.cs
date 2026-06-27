@@ -24,11 +24,13 @@ public class AccesoController : Controller
 
     private readonly Db _db;
     private readonly EmailService _email;
+    private readonly TraduccionService _traduccion;
 
-    public AccesoController(Db db, EmailService email)
+    public AccesoController(Db db, EmailService email, TraduccionService traduccion)
     {
         _db = db;
         _email = email;
+        _traduccion = traduccion;
     }
 
     [AllowAnonymous]
@@ -55,7 +57,8 @@ public class AccesoController : Controller
                      bloqueado_hasta AS BloqueadoHasta,
                      permiso_gastos AS PermisoGastos, permiso_prestamos AS PermisoPrestamos,
                      permiso_inversiones AS PermisoInversiones, permiso_directivo AS PermisoDirectivo,
-                     permiso_asistente AS PermisoAsistente, permiso_calendario AS PermisoCalendario
+                     permiso_asistente AS PermisoAsistente, permiso_calendario AS PermisoCalendario,
+                     idioma, moneda_codigo AS MonedaCodigo, zona_horaria AS ZonaHoraria
               FROM usuarios WHERE LOWER(email) = LOWER(@email)",
             new { email });
 
@@ -106,7 +109,9 @@ public class AccesoController : Controller
             new("PermisoInversiones", u.EsAdmin || u.PermisoInversiones ? "true" : "false"),
             new("PermisoDirectivo", u.EsAdmin || u.PermisoDirectivo ? "true" : "false"),
             new("PermisoAsistente", u.EsAdmin || u.PermisoAsistente ? "true" : "false"),
-            new("PermisoCalendario", u.EsAdmin || u.PermisoCalendario ? "true" : "false")
+            new("PermisoCalendario", u.EsAdmin || u.PermisoCalendario ? "true" : "false"),
+            new("Idioma", PreferenciasUsuarioService.NormalizarIdioma(u.Idioma)),
+            new("MonedaCodigo", PreferenciasUsuarioService.NormalizarMoneda(u.MonedaCodigo))
         };
         var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(new ClaimsPrincipal(identidad),
@@ -142,7 +147,8 @@ public class AccesoController : Controller
 
         using var con = _db.Abrir();
         var u = con.QueryFirstOrDefault<Usuario>(
-            @"SELECT id, email, nombre_completo AS NombreCompleto, activo, email_confirmado AS EmailConfirmado
+            @"SELECT id, email, nombre_completo AS NombreCompleto, activo, email_confirmado AS EmailConfirmado,
+                     idioma, moneda_codigo AS MonedaCodigo
               FROM usuarios WHERE LOWER(email)=LOWER(@email)",
             new { email });
 
@@ -152,10 +158,10 @@ public class AccesoController : Controller
             GuardarToken(con, u.Id, "recuperar_clave", token, u.Email, VigenciaRecuperacion);
             var url = Url.Action("RestablecerClave", "Acceso", new { token }, Request.Scheme)!;
             await _email.EnviarAsync(u.Email, "Recuperar contrasena - Finanzas Personales",
-                PlantillaCorreo("Recuperar contrasena", u.NombreCompleto,
-                    "Recibimos una solicitud para restablecer tu contrasena.",
-                    "Restablecer contrasena", url,
-                    "Este enlace vence en 30 minutos y solo puede usarse una vez."));
+                PlantillaCorreo(T("Recuperar contrasena", u.Idioma), u.NombreCompleto,
+                    T("Recibimos una solicitud para restablecer tu contrasena.", u.Idioma),
+                    T("Restablecer contrasena", u.Idioma), url,
+                    T("Este enlace vence en 30 minutos y solo puede usarse una vez.", u.Idioma)));
         }
 
         TempData["Ok"] = "Si el correo esta registrado, enviaremos un enlace de recuperacion.";
@@ -256,6 +262,43 @@ public class AccesoController : Controller
     [Authorize]
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CambiarPreferencias(string idioma, string monedaCodigo, string? returnUrl = null)
+    {
+        var usuarioId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        idioma = PreferenciasUsuarioService.NormalizarIdioma(idioma);
+        monedaCodigo = PreferenciasUsuarioService.NormalizarMoneda(monedaCodigo);
+
+        using var con = _db.Abrir();
+        con.Execute(
+            @"UPDATE usuarios SET idioma=@idioma, moneda_codigo=@monedaCodigo
+              WHERE id=@usuarioId",
+            new { usuarioId, idioma, monedaCodigo });
+
+        var claims = User.Claims
+            .Where(x => x.Type is not ("Idioma" or "MonedaCodigo"))
+            .Select(x => new Claim(x.Type, x.Value))
+            .ToList();
+        claims.Add(new Claim("Idioma", idioma));
+        claims.Add(new Claim("MonedaCodigo", monedaCodigo));
+
+        var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(new ClaimsPrincipal(identidad),
+            new AuthenticationProperties
+            {
+                IsPersistent = false,
+                IssuedUtc = DateTimeOffset.UtcNow,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(8)
+            });
+
+        TempData["Ok"] = "Preferencias actualizadas.";
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
+        return RedirectToAction("Index", "Inicio");
+    }
+
+    [Authorize]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> CambiarClave(string claveActual, string claveNueva, string confirmarClave)
     {
         var usuarioId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -295,10 +338,10 @@ public class AccesoController : Controller
         GuardarToken(con, usuarioId, "confirmar_email", token, email, VigenciaConfirmacion);
         var url = Url.Action("ConfirmarEmail", "Acceso", new { token }, Request.Scheme)!;
         await _email.EnviarAsync(email, "Verifica tu correo - Finanzas Personales",
-            PlantillaCorreo("Verifica tu correo", nombre,
-                "Confirma que este correo te pertenece para activar el acceso seguro.",
-                "Verificar correo", url,
-                "Este enlace vence en 24 horas."));
+            PlantillaCorreo(T("Verifica tu correo", "es"), nombre,
+                T("Confirma que este correo te pertenece para activar el acceso seguro.", "es"),
+                T("Verificar correo", "es"), url,
+                T("Este enlace vence en 24 horas.", "es")));
     }
 
     private static void RegistrarFallo(System.Data.IDbConnection con, int usuarioId, int intentosActuales)
@@ -383,4 +426,6 @@ public class AccesoController : Controller
         </div>
         """;
     }
+
+    private string T(string texto, string? idioma) => _traduccion.T(texto, idioma);
 }

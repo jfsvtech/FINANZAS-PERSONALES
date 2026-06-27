@@ -1,6 +1,7 @@
 using Dapper;
 using FinanzasPersonales.Web.Data;
 using FinanzasPersonales.Web.Models;
+using FinanzasPersonales.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FinanzasPersonales.Web.Controllers;
@@ -8,17 +9,26 @@ namespace FinanzasPersonales.Web.Controllers;
 public class InversionesController : BaseController
 {
     private readonly Db _db;
-    public InversionesController(Db db) => _db = db;
+    private readonly PreferenciasUsuarioService _preferencias;
+
+    public InversionesController(Db db, PreferenciasUsuarioService preferencias)
+    {
+        _db = db;
+        _preferencias = preferencias;
+    }
 
     public IActionResult Index(string? estado, int? tipoId)
     {
         using var con = _db.Abrir();
+        var pref = _preferencias.Obtener(UsuarioId);
         var vm = new InversionesIndexVm
         {
             FiltroEstado = estado,
             FiltroTipoId = tipoId,
             Inversiones = CargarInversiones(con, estado: estado, tipoId: tipoId),
-            Tipos = CargarTipos(con)
+            Tipos = CargarTipos(con),
+            Monedas = _preferencias.Monedas(),
+            MonedaBase = pref.MonedaCodigo
         };
         return View(vm);
     }
@@ -38,12 +48,8 @@ public class InversionesController : BaseController
                 Icono = g.First().TipoIcono ?? g.First().Icono
             }).OrderByDescending(x => x.Total).ToList();
 
-        var movimientos = con.Query<InversionMovimiento>(
-            @"SELECT id,usuario_id AS UsuarioId,inversion_id AS InversionId,fecha,tipo,monto,notas
-              FROM inversion_movimientos WHERE usuario_id=@UsuarioId", new { UsuarioId }).ToList();
-        var valoraciones = con.Query<InversionValoracion>(
-            @"SELECT id,usuario_id AS UsuarioId,inversion_id AS InversionId,fecha,valor,notas
-              FROM inversion_valoraciones WHERE usuario_id=@UsuarioId", new { UsuarioId }).ToList();
+        var movimientos = ConsultarMovimientos(con);
+        var valoraciones = ConsultarValoraciones(con);
         var inicio = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-11);
         for (var i = 0; i < 12; i++)
         {
@@ -66,17 +72,14 @@ public class InversionesController : BaseController
         using var con = _db.Abrir();
         var inversion = CargarInversiones(con, id: id).FirstOrDefault();
         if (inversion == null) return NotFound();
+        var pref = _preferencias.Obtener(UsuarioId);
         var vm = new InversionDetalleVm
         {
             Inversion = inversion,
-            Movimientos = con.Query<InversionMovimiento>(
-                @"SELECT id,usuario_id AS UsuarioId,inversion_id AS InversionId,fecha,tipo,monto,notas
-                  FROM inversion_movimientos WHERE inversion_id=@id AND usuario_id=@UsuarioId
-                  ORDER BY fecha DESC,id DESC", new { id, UsuarioId }).ToList(),
-            Valoraciones = con.Query<InversionValoracion>(
-                @"SELECT id,usuario_id AS UsuarioId,inversion_id AS InversionId,fecha,valor,notas
-                  FROM inversion_valoraciones WHERE inversion_id=@id AND usuario_id=@UsuarioId
-                  ORDER BY fecha DESC,id DESC", new { id, UsuarioId }).ToList()
+            Movimientos = ConsultarMovimientos(con, id),
+            Valoraciones = ConsultarValoraciones(con, id),
+            Monedas = _preferencias.Monedas(),
+            MonedaBase = pref.MonedaCodigo
         };
         return View(vm);
     }
@@ -86,7 +89,7 @@ public class InversionesController : BaseController
     public IActionResult Guardar(int id, string nombre, string? entidad, int tipoInversionId, DateTime fechaInicio,
         decimal capitalInicial, decimal tasa, string periodoTasa, string tipoRendimiento,
         DateTime? fechaRetorno, int permanenciaMeses, decimal? penalidadRetiro,
-        bool renovacionAutomatica, string? color, string? icono, string? notas)
+        bool renovacionAutomatica, string? color, string? icono, string? notas, string monedaCodigo = "COP", decimal? tasaConversion = null)
     {
         if (string.IsNullOrWhiteSpace(nombre) || capitalInicial <= 0 || tasa < 0
             || periodoTasa is not ("mensual" or "anual")
@@ -101,6 +104,7 @@ public class InversionesController : BaseController
             TempData["Error"] = "La fecha de retorno no puede ser anterior al inicio.";
             return RedirectToAction("Index");
         }
+
         color = ValidarColor(color);
         icono = ValidarIcono(icono);
         using var con = _db.Abrir();
@@ -115,37 +119,46 @@ public class InversionesController : BaseController
         }
         if (string.IsNullOrWhiteSpace(color) || color == "#D4AF37") color = tipoInversion.Color;
         if (string.IsNullOrWhiteSpace(icono) || icono == "bi-graph-up-arrow") icono = tipoInversion.Icono;
+
+        ConversionMoneda conversion;
+        try { conversion = Convertir(capitalInicial, monedaCodigo, fechaInicio, tasaConversion); }
+        catch (Exception ex) { TempData["Error"] = ex.Message; return RedirectToAction("Index"); }
+
         var tipo = tipoInversion.Nombre;
         if (id == 0)
         {
             var nuevoId = con.ExecuteScalar<int>(
-                @"INSERT INTO inversiones(usuario_id,nombre,entidad,tipo,tipo_inversion_id,fecha_inicio,capital_inicial,tasa,periodo_tasa,
-                  tipo_rendimiento,fecha_retorno,permanencia_meses,penalidad_retiro,renovacion_automatica,color,icono,notas)
-                  VALUES(@UsuarioId,@nombre,@entidad,@tipo,@tipoInversionId,@fechaInicio,@capitalInicial,@tasa,@periodoTasa,
-                  @tipoRendimiento,@fechaRetorno,@permanenciaMeses,@penalidadRetiro,@renovacionAutomatica,@color,@icono,@notas)
+                @"INSERT INTO inversiones(usuario_id,nombre,entidad,tipo,tipo_inversion_id,fecha_inicio,capital_inicial,capital_original,
+                  tasa,periodo_tasa,tipo_rendimiento,fecha_retorno,permanencia_meses,penalidad_retiro,renovacion_automatica,
+                  moneda,moneda_codigo,tasa_conversion,moneda_base_codigo,color,icono,notas)
+                  VALUES(@UsuarioId,@nombre,@entidad,@tipo,@tipoInversionId,@fechaInicio,@capitalBase,@capitalOriginal,
+                  @tasa,@periodoTasa,@tipoRendimiento,@fechaRetorno,@permanenciaMeses,@penalidadRetiro,@renovacionAutomatica,
+                  @moneda,@monedaCodigo,@tasaConversion,@monedaBase,@color,@icono,@notas)
                   RETURNING id",
-                new { UsuarioId, nombre = nombre.Trim(), entidad = entidad?.Trim(), tipo, tipoInversionId, fechaInicio, capitalInicial, tasa,
+                new { UsuarioId, nombre = nombre.Trim(), entidad = entidad?.Trim(), tipo, tipoInversionId, fechaInicio, capitalBase = conversion.MontoBase, capitalOriginal = conversion.MontoOriginal, tasa,
                     periodoTasa, tipoRendimiento, fechaRetorno, permanenciaMeses, penalidadRetiro,
-                    renovacionAutomatica, color, icono, notas = notas?.Trim() });
+                    renovacionAutomatica, moneda = conversion.MonedaOrigen, monedaCodigo = conversion.MonedaOrigen, tasaConversion = conversion.Tasa, monedaBase = conversion.MonedaDestino, color, icono, notas = notas?.Trim() });
             TempData["Ok"] = "Inversion creada.";
             return RedirectToAction("Detalle", new { id = nuevoId });
         }
+
         con.Execute(
             @"UPDATE inversiones SET nombre=@nombre,entidad=@entidad,tipo=@tipo,tipo_inversion_id=@tipoInversionId,fecha_inicio=@fechaInicio,
-              capital_inicial=@capitalInicial,tasa=@tasa,periodo_tasa=@periodoTasa,tipo_rendimiento=@tipoRendimiento,
+              capital_inicial=@capitalBase,capital_original=@capitalOriginal,tasa=@tasa,periodo_tasa=@periodoTasa,tipo_rendimiento=@tipoRendimiento,
               fecha_retorno=@fechaRetorno,permanencia_meses=@permanenciaMeses,penalidad_retiro=@penalidadRetiro,
-              renovacion_automatica=@renovacionAutomatica,color=@color,icono=@icono,notas=@notas
+              renovacion_automatica=@renovacionAutomatica,moneda=@moneda,moneda_codigo=@monedaCodigo,tasa_conversion=@tasaConversion,
+              moneda_base_codigo=@monedaBase,color=@color,icono=@icono,notas=@notas
               WHERE id=@id AND usuario_id=@UsuarioId",
-            new { id, UsuarioId, nombre = nombre.Trim(), entidad = entidad?.Trim(), tipo, tipoInversionId, fechaInicio, capitalInicial, tasa,
+            new { id, UsuarioId, nombre = nombre.Trim(), entidad = entidad?.Trim(), tipo, tipoInversionId, fechaInicio, capitalBase = conversion.MontoBase, capitalOriginal = conversion.MontoOriginal, tasa,
                 periodoTasa, tipoRendimiento, fechaRetorno, permanenciaMeses, penalidadRetiro,
-                renovacionAutomatica, color, icono, notas = notas?.Trim() });
+                renovacionAutomatica, moneda = conversion.MonedaOrigen, monedaCodigo = conversion.MonedaOrigen, tasaConversion = conversion.Tasa, monedaBase = conversion.MonedaDestino, color, icono, notas = notas?.Trim() });
         TempData["Ok"] = "Inversion actualizada.";
         return RedirectToAction("Detalle", new { id });
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult RegistrarMovimiento(int inversionId, DateTime fecha, string tipo, decimal monto, string? notas)
+    public IActionResult RegistrarMovimiento(int inversionId, DateTime fecha, string tipo, decimal monto, string? notas, string monedaCodigo = "COP", decimal? tasaConversion = null)
     {
         if (tipo is not ("aporte" or "retiro" or "rendimiento" or "costo") || monto <= 0) return BadRequest();
         using var con = _db.Abrir();
@@ -161,22 +174,27 @@ public class InversionesController : BaseController
             TempData["Error"] = "No puedes registrar un movimiento futuro.";
             return RedirectToAction("Detalle", new { id = inversionId });
         }
-        if (tipo is "retiro" or "costo" && monto > inversion.ValorActual)
+
+        ConversionMoneda conversion;
+        try { conversion = Convertir(monto, monedaCodigo, fecha, tasaConversion); }
+        catch (Exception ex) { TempData["Error"] = ex.Message; return RedirectToAction("Detalle", new { id = inversionId }); }
+
+        if (tipo is "retiro" or "costo" && conversion.MontoBase > inversion.ValorActual)
         {
             TempData["Error"] = $"El monto supera el valor actual ({inversion.ValorActual:C0}).";
             return RedirectToAction("Detalle", new { id = inversionId });
         }
         con.Execute(
-            @"INSERT INTO inversion_movimientos(usuario_id,inversion_id,fecha,tipo,monto,notas)
-              VALUES(@UsuarioId,@inversionId,@fecha,@tipo,@monto,@notas)",
-            new { UsuarioId, inversionId, fecha, tipo, monto, notas = notas?.Trim() });
+            @"INSERT INTO inversion_movimientos(usuario_id,inversion_id,fecha,tipo,monto,monto_original,moneda_codigo,tasa_conversion,moneda_base_codigo,notas)
+              VALUES(@UsuarioId,@inversionId,@fecha,@tipo,@montoBase,@montoOriginal,@monedaCodigo,@tasa,@monedaBase,@notas)",
+            new { UsuarioId, inversionId, fecha, tipo, montoBase = conversion.MontoBase, montoOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, monedaBase = conversion.MonedaDestino, notas = notas?.Trim() });
         TempData["Ok"] = "Movimiento registrado.";
         return RedirectToAction("Detalle", new { id = inversionId });
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult RegistrarValoracion(int inversionId, DateTime fecha, decimal valor, string? notas)
+    public IActionResult RegistrarValoracion(int inversionId, DateTime fecha, decimal valor, string? notas, string monedaCodigo = "COP", decimal? tasaConversion = null)
     {
         if (valor < 0) return BadRequest();
         using var con = _db.Abrir();
@@ -194,10 +212,15 @@ public class InversionesController : BaseController
             TempData["Error"] = "No puedes registrar una valoracion futura.";
             return RedirectToAction("Detalle", new { id = inversionId });
         }
+
+        ConversionMoneda conversion;
+        try { conversion = Convertir(valor, monedaCodigo, fecha, tasaConversion); }
+        catch (Exception ex) { TempData["Error"] = ex.Message; return RedirectToAction("Detalle", new { id = inversionId }); }
+
         con.Execute(
-            @"INSERT INTO inversion_valoraciones(usuario_id,inversion_id,fecha,valor,notas)
-              VALUES(@UsuarioId,@inversionId,@fecha,@valor,@notas)",
-            new { UsuarioId, inversionId, fecha, valor, notas = notas?.Trim() });
+            @"INSERT INTO inversion_valoraciones(usuario_id,inversion_id,fecha,valor,valor_original,moneda_codigo,tasa_conversion,moneda_base_codigo,notas)
+              VALUES(@UsuarioId,@inversionId,@fecha,@valorBase,@valorOriginal,@monedaCodigo,@tasa,@monedaBase,@notas)",
+            new { UsuarioId, inversionId, fecha, valorBase = conversion.MontoBase, valorOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, monedaBase = conversion.MonedaDestino, notas = notas?.Trim() });
         TempData["Ok"] = "Valor actual registrado.";
         return RedirectToAction("Detalle", new { id = inversionId });
     }
@@ -251,7 +274,11 @@ public class InversionesController : BaseController
         var sql = @"SELECT i.id,i.usuario_id AS UsuarioId,i.nombre,i.entidad,i.tipo,
                     i.tipo_inversion_id AS TipoInversionId,COALESCE(t.nombre,i.tipo) AS TipoNombre,
                     t.color AS TipoColor,t.icono AS TipoIcono,i.fecha_inicio AS FechaInicio,
-                    i.capital_inicial AS CapitalInicial,i.tasa,i.periodo_tasa AS PeriodoTasa,
+                    i.capital_inicial AS CapitalInicial,COALESCE(i.capital_original,i.capital_inicial) AS CapitalOriginal,
+                    COALESCE(i.moneda_codigo,COALESCE(NULLIF(i.moneda,''),'COP')) AS MonedaCodigo,
+                    COALESCE(i.tasa_conversion,1) AS TasaConversion,
+                    COALESCE(i.moneda_base_codigo,'COP') AS MonedaBaseCodigo,
+                    i.tasa,i.periodo_tasa AS PeriodoTasa,
                     i.tipo_rendimiento AS TipoRendimiento,i.fecha_retorno AS FechaRetorno,
                     i.permanencia_meses AS PermanenciaMeses,i.penalidad_retiro AS PenalidadRetiro,
                     i.renovacion_automatica AS RenovacionAutomatica,i.moneda,i.color,i.icono,i.notas,i.estado
@@ -264,17 +291,39 @@ public class InversionesController : BaseController
         var inversiones = con.Query<Inversion>(sql, new { UsuarioId, id, estado, tipoId }).ToList();
         if (inversiones.Count == 0) return inversiones;
         var ids = inversiones.Select(x => x.Id).ToArray();
-        var movimientos = con.Query<InversionMovimiento>(
-            @"SELECT id,usuario_id AS UsuarioId,inversion_id AS InversionId,fecha,tipo,monto,notas
-              FROM inversion_movimientos WHERE usuario_id=@UsuarioId AND inversion_id=ANY(@ids)",
-            new { UsuarioId, ids }).ToLookup(x => x.InversionId);
-        var valoraciones = con.Query<InversionValoracion>(
-            @"SELECT id,usuario_id AS UsuarioId,inversion_id AS InversionId,fecha,valor,notas
-              FROM inversion_valoraciones WHERE usuario_id=@UsuarioId AND inversion_id=ANY(@ids)",
-            new { UsuarioId, ids }).ToLookup(x => x.InversionId);
+        var movimientos = ConsultarMovimientos(con).Where(x => ids.Contains(x.InversionId)).ToLookup(x => x.InversionId);
+        var valoraciones = ConsultarValoraciones(con).Where(x => ids.Contains(x.InversionId)).ToLookup(x => x.InversionId);
         foreach (var inversion in inversiones)
             Completar(inversion, movimientos[inversion.Id], valoraciones[inversion.Id]);
         return inversiones;
+    }
+
+    private List<InversionMovimiento> ConsultarMovimientos(System.Data.IDbConnection con, int? inversionId = null)
+    {
+        var sql = @"SELECT id,usuario_id AS UsuarioId,inversion_id AS InversionId,fecha,tipo,monto,
+                           COALESCE(monto_original,monto) AS MontoOriginal,
+                           COALESCE(moneda_codigo,'COP') AS MonedaCodigo,
+                           COALESCE(tasa_conversion,1) AS TasaConversion,
+                           COALESCE(moneda_base_codigo,'COP') AS MonedaBaseCodigo,
+                           notas
+                    FROM inversion_movimientos WHERE usuario_id=@UsuarioId";
+        if (inversionId.HasValue) sql += " AND inversion_id=@inversionId";
+        sql += " ORDER BY fecha DESC,id DESC";
+        return con.Query<InversionMovimiento>(sql, new { UsuarioId, inversionId }).ToList();
+    }
+
+    private List<InversionValoracion> ConsultarValoraciones(System.Data.IDbConnection con, int? inversionId = null)
+    {
+        var sql = @"SELECT id,usuario_id AS UsuarioId,inversion_id AS InversionId,fecha,valor,
+                           COALESCE(valor_original,valor) AS ValorOriginal,
+                           COALESCE(moneda_codigo,'COP') AS MonedaCodigo,
+                           COALESCE(tasa_conversion,1) AS TasaConversion,
+                           COALESCE(moneda_base_codigo,'COP') AS MonedaBaseCodigo,
+                           notas
+                    FROM inversion_valoraciones WHERE usuario_id=@UsuarioId";
+        if (inversionId.HasValue) sql += " AND inversion_id=@inversionId";
+        sql += " ORDER BY fecha DESC,id DESC";
+        return con.Query<InversionValoracion>(sql, new { UsuarioId, inversionId }).ToList();
     }
 
     private List<TipoInversion> CargarTipos(System.Data.IDbConnection con) =>
@@ -285,10 +334,8 @@ public class InversionesController : BaseController
 
     private static void Completar(Inversion inversion, IEnumerable<InversionMovimiento> movimientos, IEnumerable<InversionValoracion> valoraciones)
     {
-        var movs = movimientos.Where(x => x.Fecha.Date <= DateTime.Today)
-            .OrderBy(x => x.Fecha).ThenBy(x => x.Id).ToList();
-        var vals = valoraciones.Where(x => x.Fecha.Date <= DateTime.Today)
-            .OrderBy(x => x.Fecha).ThenBy(x => x.Id).ToList();
+        var movs = movimientos.Where(x => x.Fecha.Date <= DateTime.Today).OrderBy(x => x.Fecha).ThenBy(x => x.Id).ToList();
+        var vals = valoraciones.Where(x => x.Fecha.Date <= DateTime.Today).OrderBy(x => x.Fecha).ThenBy(x => x.Id).ToList();
         inversion.AportesAdicionales = movs.Where(x => x.Tipo == "aporte").Sum(x => x.Monto);
         inversion.TotalRetiros = movs.Where(x => x.Tipo == "retiro").Sum(x => x.Monto);
         inversion.TotalRendimientos = movs.Where(x => x.Tipo == "rendimiento").Sum(x => x.Monto);
@@ -324,6 +371,13 @@ public class InversionesController : BaseController
             _ => 0
         });
         return Math.Max(0, valor);
+    }
+
+    private ConversionMoneda Convertir(decimal monto, string monedaCodigo, DateTime fecha, decimal? tasaConversion)
+    {
+        var pref = _preferencias.Obtener(UsuarioId);
+        return _preferencias.ConvertirAsync(monto, monedaCodigo, pref.MonedaCodigo, fecha, tasaConversion)
+            .GetAwaiter().GetResult();
     }
 
     private static string ValidarColor(string? color) =>

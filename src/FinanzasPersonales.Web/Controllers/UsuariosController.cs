@@ -14,11 +14,15 @@ public class UsuariosController : BaseController
 {
     private readonly Db _db;
     private readonly EmailService _email;
+    private readonly PreferenciasUsuarioService _preferencias;
+    private readonly TraduccionService _traduccion;
 
-    public UsuariosController(Db db, EmailService email)
+    public UsuariosController(Db db, EmailService email, PreferenciasUsuarioService preferencias, TraduccionService traduccion)
     {
         _db = db;
         _email = email;
+        _preferencias = preferencias;
+        _traduccion = traduccion;
     }
 
     public IActionResult Index()
@@ -38,15 +42,17 @@ public class UsuariosController : BaseController
                      permiso_gastos AS PermisoGastos, permiso_prestamos AS PermisoPrestamos,
                      permiso_inversiones AS PermisoInversiones, permiso_directivo AS PermisoDirectivo,
                      permiso_asistente AS PermisoAsistente, permiso_calendario AS PermisoCalendario,
+                     idioma, moneda_codigo AS MonedaCodigo, zona_horaria AS ZonaHoraria,
                      COALESCE((SELECT SUM(p.monto) FROM usuario_pagos_suscripcion p WHERE p.usuario_id=usuarios.id),0) AS TotalPagadoSuscripcion,
                      (SELECT MAX(p.fecha_pago) FROM usuario_pagos_suscripcion p WHERE p.usuario_id=usuarios.id) AS UltimoPagoSuscripcion
               FROM usuarios ORDER BY nombre_completo").ToList();
         var pagos = con.Query<PagoSuscripcion>(
             @"SELECT id, usuario_id AS UsuarioId, fecha_pago AS FechaPago, monto,
+                     COALESCE(moneda_codigo,'COP') AS MonedaCodigo,
                      periodo_cubierto AS PeriodoCubierto, metodo, referencia, notas, creado_en AS CreadoEn
               FROM usuario_pagos_suscripcion
               ORDER BY fecha_pago DESC, id DESC").ToList();
-        return View(new UsuariosAdminVm { Usuarios = usuarios, Pagos = pagos });
+        return View(new UsuariosAdminVm { Usuarios = usuarios, Pagos = pagos, Monedas = _preferencias.Monedas(), Idiomas = _preferencias.Idiomas() });
     }
 
     [HttpPost]
@@ -69,6 +75,9 @@ public class UsuariosController : BaseController
         bool permisoDirectivo = false,
         bool permisoAsistente = false,
         bool permisoCalendario = false,
+        string idioma = "es",
+        string monedaCodigo = "COP",
+        string? zonaHoraria = "America/Bogota",
         bool esAdmin = false,
         bool activo = true)
     {
@@ -77,6 +86,9 @@ public class UsuariosController : BaseController
         nombreCompleto = (nombreCompleto ?? "").Trim();
         cicloSuscripcion = NormalizarCiclo(cicloSuscripcion);
         estadoSuscripcion = NormalizarEstado(estadoSuscripcion);
+        idioma = PreferenciasUsuarioService.NormalizarIdioma(idioma);
+        monedaCodigo = PreferenciasUsuarioService.NormalizarMoneda(monedaCodigo);
+        zonaHoraria = string.IsNullOrWhiteSpace(zonaHoraria) ? "America/Bogota" : zonaHoraria.Trim();
         diasGracia = Math.Clamp(diasGracia, 0, 90);
         valorSuscripcion = Math.Max(0, valorSuscripcion);
         if (!EmailValido(email) || string.IsNullOrWhiteSpace(nombreCompleto))
@@ -107,11 +119,13 @@ public class UsuariosController : BaseController
                 @"INSERT INTO usuarios (nombre_usuario, email, nombre_completo, clave_hash, es_admin, activo, email_confirmado,
                          valor_suscripcion, ciclo_suscripcion, fecha_inicio_suscripcion, proximo_pago,
                          dias_gracia, estado_suscripcion, notas_suscripcion,
-                         permiso_gastos, permiso_prestamos, permiso_inversiones, permiso_directivo, permiso_asistente, permiso_calendario)
+                         permiso_gastos, permiso_prestamos, permiso_inversiones, permiso_directivo, permiso_asistente, permiso_calendario,
+                         idioma, moneda_codigo, zona_horaria)
                   VALUES (@nombreUsuario, @email, @nombreCompleto, @hash, @esAdmin, @activo, FALSE,
                          @valorSuscripcion, @cicloSuscripcion, @fechaInicioSuscripcion, @proximoPago,
                          @diasGracia, @estadoSuscripcion, @notasSuscripcion,
-                         @permisoGastos, @permisoPrestamos, @permisoInversiones, @permisoDirectivo, @permisoAsistente, @permisoCalendario) RETURNING id",
+                         @permisoGastos, @permisoPrestamos, @permisoInversiones, @permisoDirectivo, @permisoAsistente, @permisoCalendario,
+                         @idioma, @monedaCodigo, @zonaHoraria) RETURNING id",
                 new
                 {
                     nombreUsuario = "tmp_" + Guid.NewGuid().ToString("N")[..16],
@@ -132,7 +146,10 @@ public class UsuariosController : BaseController
                     permisoInversiones,
                     permisoDirectivo,
                     permisoAsistente,
-                    permisoCalendario
+                    permisoCalendario,
+                    idioma,
+                    monedaCodigo,
+                    zonaHoraria
                 });
             con.Execute("UPDATE usuarios SET nombre_usuario=@nombreUsuario WHERE id=@nuevoId",
                 new { nombreUsuario = $"u{nuevoId}", nuevoId });
@@ -162,6 +179,7 @@ public class UsuariosController : BaseController
                          permiso_gastos=@permisoGastos, permiso_prestamos=@permisoPrestamos,
                          permiso_inversiones=@permisoInversiones, permiso_directivo=@permisoDirectivo,
                          permiso_asistente=@permisoAsistente, permiso_calendario=@permisoCalendario,
+                         idioma=@idioma, moneda_codigo=@monedaCodigo, zona_horaria=@zonaHoraria,
                          suspendido_por_mora=CASE WHEN @activo THEN FALSE ELSE suspendido_por_mora END,
                          suspendido_en=CASE WHEN @activo THEN NULL ELSE suspendido_en END,
                          email_confirmado=CASE WHEN @cambioEmail THEN FALSE ELSE email_confirmado END
@@ -187,7 +205,10 @@ public class UsuariosController : BaseController
                     permisoInversiones,
                     permisoDirectivo,
                     permisoAsistente,
-                    permisoCalendario
+                    permisoCalendario,
+                    idioma,
+                    monedaCodigo,
+                    zonaHoraria
                 });
             if (!string.IsNullOrWhiteSpace(clave))
             {
@@ -228,7 +249,8 @@ public class UsuariosController : BaseController
 
         using var con = _db.Abrir();
         var usuario = con.QueryFirstOrDefault<Usuario>(
-            @"SELECT id, ciclo_suscripcion AS CicloSuscripcion, proximo_pago AS ProximoPago
+            @"SELECT id, ciclo_suscripcion AS CicloSuscripcion, proximo_pago AS ProximoPago,
+                     moneda_codigo AS MonedaCodigo
               FROM usuarios WHERE id=@usuarioId", new { usuarioId });
         if (usuario == null)
         {
@@ -237,13 +259,14 @@ public class UsuariosController : BaseController
         }
 
         con.Execute(
-            @"INSERT INTO usuario_pagos_suscripcion(usuario_id,fecha_pago,monto,periodo_cubierto,metodo,referencia,notas)
-              VALUES(@usuarioId,@fechaPago,@monto,@periodoCubierto,@metodo,@referencia,@notas)",
+            @"INSERT INTO usuario_pagos_suscripcion(usuario_id,fecha_pago,monto,moneda_codigo,periodo_cubierto,metodo,referencia,notas)
+              VALUES(@usuarioId,@fechaPago,@monto,@monedaCodigo,@periodoCubierto,@metodo,@referencia,@notas)",
             new
             {
                 usuarioId,
                 fechaPago = fechaPago.Date,
                 monto,
+                monedaCodigo = PreferenciasUsuarioService.NormalizarMoneda(usuario.MonedaCodigo),
                 periodoCubierto = periodoCubierto.Trim(),
                 metodo = metodo?.Trim(),
                 referencia = referencia?.Trim(),
@@ -328,6 +351,7 @@ public class UsuariosController : BaseController
             return new EmailEnvioResultado(false, "SMTP no esta configurado completamente. Revisa Integraciones y vuelve a reenviar la verificacion.");
 
         var token = CrearTokenSeguro();
+        var idioma = con.ExecuteScalar<string?>("SELECT idioma FROM usuarios WHERE id=@usuarioId", new { usuarioId }) ?? "es";
         con.Execute(
             @"UPDATE usuario_tokens SET usado_en=NOW()
               WHERE usuario_id=@usuarioId AND tipo='confirmar_email' AND usado_en IS NULL;
@@ -337,16 +361,16 @@ public class UsuariosController : BaseController
         var url = Url.Action("ConfirmarEmail", "Acceso", new { token }, Request.Scheme)!;
         try
         {
-            await _email.EnviarAsync(email, "Verifica tu correo - Finanzas Personales",
+            await _email.EnviarAsync(email, _traduccion.T("Verifica tu correo", idioma) + " - Finanzas Personales",
                 $"""
                 <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;background:#F5F5F7;color:#1C1C1E">
                   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:16px;padding:28px">
                     <div style="color:#7C3AED;font-weight:800;letter-spacing:.08em;text-transform:uppercase;font-size:12px">Finanzas Personales</div>
-                    <h2 style="margin:8px 0 10px;color:#1C1C1E">Verifica tu correo</h2>
-                    <p>Hola {System.Net.WebUtility.HtmlEncode(nombre)}, confirma que este correo te pertenece para activar tu acceso seguro.</p>
-                    <p style="margin:28px 0"><a href="{url}" style="background:#7C3AED;color:white;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700">Verificar correo</a></p>
-                    <p style="font-size:13px;color:#6B7280">Este enlace vence en 24 horas.</p>
-                    <p style="font-size:12px;color:#6B7280;word-break:break-all">Si el boton no funciona, copia este enlace:<br>{url}</p>
+                    <h2 style="margin:8px 0 10px;color:#1C1C1E">{_traduccion.T("Verifica tu correo", idioma)}</h2>
+                    <p>{_traduccion.T("Hola", idioma)} {System.Net.WebUtility.HtmlEncode(nombre)}, {_traduccion.T("Confirma que este correo te pertenece para activar el acceso seguro.", idioma)}</p>
+                    <p style="margin:28px 0"><a href="{url}" style="background:#7C3AED;color:white;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700">{_traduccion.T("Verificar correo", idioma)}</a></p>
+                    <p style="font-size:13px;color:#6B7280">{_traduccion.T("Este enlace vence en 24 horas.", idioma)}</p>
+                    <p style="font-size:12px;color:#6B7280;word-break:break-all">{_traduccion.T("Si el boton no funciona, copia este enlace:", idioma)}<br>{url}</p>
                   </div>
                 </div>
                 """);

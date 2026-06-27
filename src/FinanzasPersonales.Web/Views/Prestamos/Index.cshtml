@@ -1,10 +1,12 @@
 @model PrestamosIndexVm
+@inject PreferenciasUsuarioService Money
 @{
     ViewBag.Titulo = "Prestamos - Finanzas Personales";
     var hoy = DateTime.Today;
     var inicioAnio = new DateTime(hoy.Year, 1, 1);
     var inicioTresMeses = hoy.AddMonths(-3).Date;
     string F(DateTime fecha) => fecha.ToString("yyyy-MM-dd");
+    string M(decimal valor, string moneda) => Money.FormatoMoneda(valor, moneda);
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -111,8 +113,8 @@
                 <tr class="@(p.Estado == "pagado" ? "table-success" : "")">
                     <td><i class="bi bi-person-circle me-1"></i> @p.PersonaNombre</td>
                     <td class="d-none d-md-table-cell">@p.Fecha.ToString("dd MMM yyyy")</td>
-                    <td class="text-end">@p.Capital.ToString("C0")</td>
-                    <td class="text-end fw-bold">@p.SaldoCapital.ToString("C0")</td>
+                    <td class="text-end">@M(p.CapitalOriginal ?? p.Capital, p.MonedaCodigo)@if(p.MonedaCodigo != Model.MonedaBase){<small class="d-block text-muted">@M(p.Capital, Model.MonedaBase)</small>}</td>
+                    <td class="text-end fw-bold">@M(p.SaldoCapital, Model.MonedaBase)</td>
                     <td class="d-none d-md-table-cell text-end">@p.TasaMensual.ToString("0.##")%</td>
                     <td class="text-end fw-bold @(p.InteresPendiente > 0 ? "text-warning" : "text-success")">@p.InteresPendiente.ToString("C0")</td>
                     <td>
@@ -160,6 +162,22 @@
                         <label class="form-label">Capital</label>
                         <input type="number" name="capital" id="prCapital" class="form-control" min="1" step="1"
                                inputmode="numeric" required oninput="calcularInteres()" />
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Moneda</label>
+                        <select name="monedaCodigo" class="form-select">
+                            @foreach (var moneda in Model.Monedas)
+                            {
+                                if (moneda.Codigo == Model.MonedaBase) { <option value="@moneda.Codigo" selected>@moneda.Codigo - @moneda.Nombre</option> }
+                                else { <option value="@moneda.Codigo">@moneda.Codigo - @moneda.Nombre</option> }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Tasa manual</label>
+                        <input type="number" name="tasaConversion" class="form-control" min="0" step="0.000001" placeholder="Opcional" />
                     </div>
                 </div>
                 <div class="row g-2 mb-3">

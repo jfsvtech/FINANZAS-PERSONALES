@@ -12,9 +12,12 @@
     var puedeDirectivo = esAdmin || User.HasClaim("PermisoDirectivo", "true");
     var puedeAsistente = esAdmin || User.HasClaim("PermisoAsistente", "true");
     var puedeCalendario = esAdmin || User.HasClaim("PermisoCalendario", "true");
+    var idiomaActual = User.FindFirst("Idioma")?.Value ?? "es";
+    var monedaActual = User.FindFirst("MonedaCodigo")?.Value ?? "COP";
+    var returnUrl = Context.Request.Path + Context.Request.QueryString;
 }
 <!DOCTYPE html>
-<html lang="es" data-theme="light">
+<html lang="@idiomaActual" data-theme="light">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -122,6 +125,7 @@
             <div class="dropdown">
                 <button class="user-menu" data-bs-toggle="dropdown"><span class="user-avatar">@User.Identity!.Name![0]</span><span class="user-copy"><strong>@User.Identity.Name</strong><small>Mi cuenta</small></span><i class="bi bi-chevron-down"></i></button>
                 <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalPreferencias"><i class="bi bi-translate"></i> Preferencias</a></li>
                     <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalCambiarClave"><i class="bi bi-key"></i> Cambiar clave</a></li>
                     @if (esAdmin) { <li><a class="dropdown-item" asp-controller="Configuracion" asp-action="Integraciones"><i class="bi bi-plug"></i> Integraciones</a></li> }
                     <li><hr class="dropdown-divider" /></li>
@@ -155,6 +159,7 @@
     </div>
 
     <div class="modal fade" id="modalCambiarClave" tabindex="-1"><div class="modal-dialog"><form class="modal-content" asp-controller="Acceso" asp-action="CambiarClave" method="post">@Html.AntiForgeryToken()<div class="modal-header"><h5 class="modal-title">Cambiar contrasena</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Contrasena actual</label><input type="password" name="claveActual" class="form-control" autocomplete="current-password" required /></div><div class="mb-3"><label class="form-label">Nueva contrasena</label><input type="password" name="claveNueva" class="form-control" minlength="12" autocomplete="new-password" required /></div><div class="mb-3"><label class="form-label">Confirmar nueva contrasena</label><input type="password" name="confirmarClave" class="form-control" minlength="12" autocomplete="new-password" required /></div><div class="password-policy"><span><i class="bi bi-check2-circle"></i> Minimo 12 caracteres</span><span><i class="bi bi-check2-circle"></i> Mayuscula, minuscula, numero y simbolo</span></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar</button></div></form></div></div>
+    <div class="modal fade" id="modalPreferencias" tabindex="-1"><div class="modal-dialog"><form class="modal-content" asp-controller="Acceso" asp-action="CambiarPreferencias" method="post">@Html.AntiForgeryToken()<input type="hidden" name="returnUrl" value="@returnUrl" /><div class="modal-header"><h5 class="modal-title">Preferencias</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Idioma</label><select name="idioma" class="form-select"><option value="es" selected="@(idiomaActual == "es" ? "selected" : null)">Espanol</option><option value="en" selected="@(idiomaActual == "en" ? "selected" : null)">English</option><option value="pt" selected="@(idiomaActual == "pt" ? "selected" : null)">Portugues</option></select></div><div class="mb-3"><label class="form-label">Moneda base</label><select name="monedaCodigo" class="form-select"><option value="COP" selected="@(monedaActual == "COP" ? "selected" : null)">COP - Peso colombiano</option><option value="USD" selected="@(monedaActual == "USD" ? "selected" : null)">USD - US Dollar</option><option value="EUR" selected="@(monedaActual == "EUR" ? "selected" : null)">EUR - Euro</option><option value="BRL" selected="@(monedaActual == "BRL" ? "selected" : null)">BRL - Real brasileiro</option></select><div class="form-text">La moneda base define como se consolidan los nuevos registros y reportes preparados para multimoneda.</div></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Actualizar preferencias</button></div></form></div></div>
 }
 
 <main class="app-content @(!autenticado ? "public-content" : "")">
