@@ -10,6 +10,48 @@
 </div>
 
 <div class="row g-3">
+    <div class="col-12">
+        <div class="card integration-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <span class="integration-icon"><i class="bi bi-cloud-check"></i></span>
+                    <span class="badge @(Model.EmailApiConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.EmailApiConfigurado ? "Recomendado activo" : "Recomendado para Railway")</span>
+                </div>
+                <h5>Correo por API HTTPS</h5>
+                <p class="text-muted small">
+                    Para publicacion en Railway es la opcion mas confiable porque usa HTTPS y evita bloqueos de puertos SMTP como <code>587</code>.
+                    Si configuras esta seccion, el sistema enviara verificaciones, recuperacion de contrasena y recordatorios por API antes que SMTP.
+                </p>
+                <form method="post" asp-action="GuardarEmailApi" class="row g-3">
+                    @Html.AntiForgeryToken()
+                    <div class="col-md-3">
+                        <label class="form-label">Proveedor</label>
+                        <select name="provider" class="form-select">
+                            <option value="resend" selected="@(Model.EmailApiProvider == "resend")">Resend</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">API Key</label>
+                        <input name="apiKey" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.EmailApiKeyGuardada ? "Guardada. Deja vacio para conservarla" : "re_...")" />
+                        <div class="form-text">La API Key se guarda cifrada con DataProtection.</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Nombre remitente</label>
+                        <input name="fromName" class="form-control" value="@Model.EmailApiFromName" placeholder="Finanzas Personales" />
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Correo remitente verificado</label>
+                        <input name="fromEmail" type="email" class="form-control" value="@Model.EmailApiFromEmail" placeholder="notificaciones@tudominio.com" required />
+                        <div class="form-text">En Resend debe ser un dominio/correo verificado. Para pruebas puedes usar el remitente de sandbox que te entregue el proveedor.</div>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button class="btn btn-primary w-100"><i class="bi bi-save"></i> Guardar correo API</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <div class="col-12 col-xl-7">
         <div class="card h-100 integration-card">
             <div class="card-body">

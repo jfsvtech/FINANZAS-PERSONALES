@@ -608,6 +608,11 @@ public class AsistenteIndexVm
 
 public class ConfiguracionIntegracionesVm
 {
+    public bool EmailApiConfigurado { get; set; }
+    public string EmailApiProvider { get; set; } = "resend";
+    public string EmailApiFromEmail { get; set; } = "";
+    public string EmailApiFromName { get; set; } = "Finanzas Personales";
+    public bool EmailApiKeyGuardada { get; set; }
     public bool SmtpConfigurado { get; set; }
     public string SmtpHost { get; set; } = "";
     public int SmtpPort { get; set; } = 587;
@@ -679,6 +684,17 @@ public class SmtpSettings
     public bool Configurado => !string.IsNullOrWhiteSpace(Host) &&
                                !string.IsNullOrWhiteSpace(User) &&
                                !string.IsNullOrWhiteSpace(Password);
+}
+
+public class EmailApiSettings
+{
+    public string Provider { get; set; } = "resend";
+    public string ApiKey { get; set; } = "";
+    public string FromEmail { get; set; } = "";
+    public string FromName { get; set; } = "Finanzas Personales";
+    public bool Configurado => Provider.Equals("resend", StringComparison.OrdinalIgnoreCase) &&
+                               !string.IsNullOrWhiteSpace(ApiKey) &&
+                               !string.IsNullOrWhiteSpace(FromEmail);
 }
 
 public class WhatsAppSettings

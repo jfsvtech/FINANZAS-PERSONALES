@@ -41,12 +41,19 @@
                 <div class="alert alert-light border mt-3 mb-0 small">
                     <div class="d-flex gap-2">
                         <i class="bi bi-key text-primary fs-5"></i>
-                        <div>
-                            <strong>Olvidaste tu contrasena?</strong>
+                        <div class="w-100">
+                            <strong>Recordar contrasena</strong>
                             <div class="text-muted">Escribe tu correo registrado y te enviaremos un enlace seguro de un solo uso para crear una nueva contrasena.</div>
-                            <a class="btn btn-outline-primary btn-sm mt-2" asp-action="RecuperarClave">
-                                <i class="bi bi-envelope-check"></i> Recuperar contrasena
-                            </a>
+                            <form method="post" asp-action="RecuperarClave" class="mt-2">
+                                @Html.AntiForgeryToken()
+                                <label class="form-label small mb-1">Correo registrado</label>
+                                <div class="input-group input-group-sm">
+                                    <input name="email" type="email" class="form-control" autocomplete="email" placeholder="correo@dominio.com" required />
+                                    <button class="btn btn-outline-primary" type="submit">
+                                        <i class="bi bi-envelope-check"></i> Enviar enlace
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>

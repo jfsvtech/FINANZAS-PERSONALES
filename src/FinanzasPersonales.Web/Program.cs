@@ -33,8 +33,8 @@ builder.Services.AddAntiforgery(opt =>
 });
 builder.Services.AddSingleton<Db>();
 builder.Services.AddSingleton<AsistenteFinancieroService>();
-builder.Services.AddSingleton<EmailService>();
 builder.Services.AddSingleton<TraduccionService>();
+builder.Services.AddHttpClient<EmailService>();
 builder.Services.AddHttpClient<WhatsAppService>();
 builder.Services.AddHttpClient<PreferenciasUsuarioService>();
 builder.Services.AddRateLimiter(opt =>

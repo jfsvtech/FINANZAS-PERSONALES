@@ -21,10 +21,16 @@ public class ConfiguracionController : BaseController
     {
         if (!EsAdmin) return Forbid();
         var smtp = _email.ObtenerConfiguracion();
+        var emailApi = _email.ObtenerApiConfiguracion();
         var diagnosticoSmtp = _email.ObtenerDiagnostico();
         var whatsApp = _whatsApp.ObtenerConfiguracion();
         return View(new ConfiguracionIntegracionesVm
         {
+            EmailApiConfigurado = emailApi.Configurado,
+            EmailApiProvider = emailApi.Provider,
+            EmailApiFromEmail = emailApi.FromEmail,
+            EmailApiFromName = emailApi.FromName,
+            EmailApiKeyGuardada = !string.IsNullOrWhiteSpace(emailApi.ApiKey),
             SmtpConfigurado = smtp.Configurado,
             SmtpHost = smtp.Host,
             SmtpPort = smtp.Port,
@@ -43,6 +49,48 @@ public class ConfiguracionController : BaseController
             WhatsAppTemplateLanguage = whatsApp.TemplateLanguage,
             WhatsAppTokenGuardado = !string.IsNullOrWhiteSpace(whatsApp.AccessToken)
         });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult GuardarEmailApi(string provider, string? apiKey, string fromEmail, string? fromName)
+    {
+        if (!EsAdmin) return Forbid();
+        provider = string.IsNullOrWhiteSpace(provider) ? "resend" : provider.Trim().ToLowerInvariant();
+        apiKey = (apiKey ?? "").Trim();
+        fromEmail = (fromEmail ?? "").Trim();
+        fromName = (fromName ?? "").Trim();
+
+        if (provider != "resend")
+        {
+            TempData["Error"] = "Por ahora el proveedor API soportado es Resend.";
+            return RedirectToAction("Integraciones");
+        }
+
+        if (string.IsNullOrWhiteSpace(fromEmail))
+        {
+            TempData["Error"] = "El correo remitente de la API es obligatorio.";
+            return RedirectToAction("Integraciones");
+        }
+
+        var actual = _email.ObtenerApiConfiguracion();
+        var actualizarApiKey = !string.IsNullOrWhiteSpace(apiKey);
+        if (!actualizarApiKey && string.IsNullOrWhiteSpace(actual.ApiKey))
+        {
+            TempData["Error"] = "Debes ingresar la API Key al configurar el correo por API por primera vez.";
+            return RedirectToAction("Integraciones");
+        }
+
+        _email.GuardarApiConfiguracion(new EmailApiSettings
+        {
+            Provider = provider,
+            ApiKey = actualizarApiKey ? apiKey! : actual.ApiKey,
+            FromEmail = fromEmail,
+            FromName = string.IsNullOrWhiteSpace(fromName) ? "Finanzas Personales" : fromName!
+        }, actualizarApiKey);
+
+        TempData["Ok"] = "Configuracion de correo por API guardada correctamente.";
+        return RedirectToAction("Integraciones");
     }
 
     [HttpPost]

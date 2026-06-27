@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Mail;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using Dapper;
 using FinanzasPersonales.Web.Data;
 using FinanzasPersonales.Web.Models;
@@ -12,17 +15,36 @@ public class EmailService
     private readonly IConfiguration _config;
     private readonly Db _db;
     private readonly IDataProtector _protector;
+    private readonly IDataProtector _apiProtector;
+    private readonly HttpClient _http;
     private readonly ILogger<EmailService> _logger;
 
-    public EmailService(IConfiguration config, Db db, IDataProtectionProvider dataProtection, ILogger<EmailService> logger)
+    public EmailService(IConfiguration config, Db db, IDataProtectionProvider dataProtection, HttpClient http, ILogger<EmailService> logger)
     {
         _config = config;
         _db = db;
         _protector = dataProtection.CreateProtector("FinanzasPersonales.SmtpSettings");
+        _apiProtector = dataProtection.CreateProtector("FinanzasPersonales.EmailApiSettings");
+        _http = http;
         _logger = logger;
     }
 
-    public bool Configurado => ObtenerConfiguracion().Configurado;
+    public bool Configurado => ObtenerApiConfiguracion().Configurado || ObtenerConfiguracion().Configurado;
+
+    public EmailApiSettings ObtenerApiConfiguracion()
+    {
+        var dbSettings = ObtenerApiDesdeBaseDatos();
+        if (dbSettings.Configurado || !string.IsNullOrWhiteSpace(dbSettings.FromEmail))
+            return dbSettings;
+
+        return new EmailApiSettings
+        {
+            Provider = _config["Notifications:EmailApi:Provider"] ?? "resend",
+            ApiKey = _config["Notifications:EmailApi:ApiKey"] ?? "",
+            FromEmail = _config["Notifications:EmailApi:FromEmail"] ?? "",
+            FromName = _config["Notifications:EmailApi:FromName"] ?? "Finanzas Personales"
+        };
+    }
 
     public SmtpSettings ObtenerConfiguracion()
     {
@@ -104,6 +126,16 @@ public class EmailService
             Guardar(con, "Smtp:Password", _protector.Protect(settings.Password), true);
     }
 
+    public void GuardarApiConfiguracion(EmailApiSettings settings, bool actualizarApiKey)
+    {
+        using var con = _db.Abrir();
+        Guardar(con, "EmailApi:Provider", string.IsNullOrWhiteSpace(settings.Provider) ? "resend" : settings.Provider, false);
+        Guardar(con, "EmailApi:FromEmail", settings.FromEmail, false);
+        Guardar(con, "EmailApi:FromName", string.IsNullOrWhiteSpace(settings.FromName) ? "Finanzas Personales" : settings.FromName, false);
+        if (actualizarApiKey)
+            Guardar(con, "EmailApi:ApiKey", _apiProtector.Protect(settings.ApiKey), true);
+    }
+
     public async Task<bool> EnviarPruebaAsync(string destinatario)
     {
         return await EnviarAsync(destinatario, "Prueba de correo - Finanzas Personales",
@@ -120,6 +152,10 @@ public class EmailService
 
     public async Task<bool> EnviarAsync(string destinatario, string asunto, string html)
     {
+        var api = ObtenerApiConfiguracion();
+        if (api.Configurado)
+            return await EnviarPorApiAsync(api, destinatario, asunto, html);
+
         var settings = ObtenerConfiguracion();
         if (!settings.Configurado)
         {
@@ -141,7 +177,7 @@ public class EmailService
         {
             EnableSsl = settings.EnableSsl,
             Credentials = new NetworkCredential(settings.User, settings.Password),
-            Timeout = 30000
+            Timeout = 10000
         };
 
         try
@@ -166,14 +202,53 @@ public class EmailService
         return true;
     }
 
+    private async Task<bool> EnviarPorApiAsync(EmailApiSettings settings, string destinatario, string asunto, string html)
+    {
+        if (!settings.Provider.Equals("resend", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Proveedor de correo por API no soportado. Por ahora usa Resend.");
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
+        var payload = new
+        {
+            from = $"{settings.FromName} <{settings.FromEmail}>",
+            to = new[] { destinatario },
+            subject = asunto,
+            html
+        };
+        req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        try
+        {
+            using var res = await _http.SendAsync(req);
+            var body = await res.Content.ReadAsStringAsync();
+            if (res.IsSuccessStatusCode)
+                return true;
+
+            _logger.LogError("Error API correo {Provider}. Status={Status}. Body={Body}", settings.Provider, (int)res.StatusCode, body);
+            throw new InvalidOperationException($"No se pudo enviar por API de correo ({settings.Provider}). HTTP {(int)res.StatusCode}: {body}");
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            _logger.LogError(ex, "Error enviando correo por API {Provider} a {Email}.", settings.Provider, destinatario);
+            throw new InvalidOperationException("No se pudo conectar con el proveedor de correo por API HTTPS. Detalle: " + ex.Message, ex);
+        }
+    }
+
     private static string CrearMensajeDiagnosticoSmtp(SmtpSettings settings, Exception ex)
     {
         var detalle = ex.InnerException?.Message ?? ex.Message;
+        var redNoDisponible = detalle.Contains("Network is unreachable", StringComparison.OrdinalIgnoreCase)
+            || detalle.Contains("No route to host", StringComparison.OrdinalIgnoreCase)
+            || detalle.Contains("Connection timed out", StringComparison.OrdinalIgnoreCase);
         var proveedor = settings.Host.Contains("gmail", StringComparison.OrdinalIgnoreCase)
             ? " Para Gmail debes usar una contrasena de aplicacion de Google, tener la verificacion en 2 pasos activa y usar smtp.gmail.com con puerto 587 y SSL/TLS activo."
             : "";
+        var red = redNoDisponible
+            ? " El servidor publicado no puede abrir conexion de red hacia el SMTP. En plataformas cloud esto suele pasar porque el puerto SMTP saliente esta bloqueado o la ruta IPv6/SMTP no esta disponible. En Railway normalmente es mas confiable enviar correos por API HTTPS (Resend, SendGrid, Brevo, Mailgun) en vez de SMTP directo."
+            : "";
 
-        return $"No se pudo conectar o autenticar con el servidor SMTP ({settings.Host}:{settings.Port}). Detalle: {detalle}.{proveedor}";
+        return $"No se pudo conectar o autenticar con el servidor SMTP ({settings.Host}:{settings.Port}). Detalle: {detalle}.{proveedor}{red}";
     }
 
     private SmtpSettings ObtenerDesdeBaseDatos()
@@ -213,6 +288,44 @@ public class EmailService
         {
             _logger.LogWarning(ex, "No se pudo leer configuracion SMTP desde base de datos.");
             return new SmtpSettings();
+        }
+    }
+
+    private EmailApiSettings ObtenerApiDesdeBaseDatos()
+    {
+        try
+        {
+            using var con = _db.Abrir();
+            var filas = con.Query<(string Clave, string? Valor, bool Protegido)>(
+                "SELECT clave, valor, protegido FROM configuraciones_sistema WHERE clave LIKE 'EmailApi:%'")
+                .ToDictionary(x => x.Clave, x => x, StringComparer.OrdinalIgnoreCase);
+
+            string Leer(string clave)
+            {
+                if (!filas.TryGetValue(clave, out var fila) || string.IsNullOrWhiteSpace(fila.Valor))
+                    return "";
+                if (!fila.Protegido)
+                    return fila.Valor;
+                try { return _apiProtector.Unprotect(fila.Valor); }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "No se pudo descifrar la configuracion protegida {Clave}. Revisa persistencia de DataProtection.", clave);
+                    return "";
+                }
+            }
+
+            return new EmailApiSettings
+            {
+                Provider = string.IsNullOrWhiteSpace(Leer("EmailApi:Provider")) ? "resend" : Leer("EmailApi:Provider"),
+                ApiKey = Leer("EmailApi:ApiKey"),
+                FromEmail = Leer("EmailApi:FromEmail"),
+                FromName = string.IsNullOrWhiteSpace(Leer("EmailApi:FromName")) ? "Finanzas Personales" : Leer("EmailApi:FromName")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo leer configuracion de correo por API desde base de datos.");
+            return new EmailApiSettings();
         }
     }
 
