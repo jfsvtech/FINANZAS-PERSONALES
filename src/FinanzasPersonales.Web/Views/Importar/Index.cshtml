@@ -1,0 +1,34 @@
+@{
+    ViewBag.Titulo = "Importar movimientos - Finanzas Personales";
+}
+
+<h4 class="mb-3"><i class="bi bi-upload"></i> Importar movimientos desde texto</h4>
+
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <p class="text-muted">
+                    Pega una linea por movimiento con el formato:
+                    <code>Tipo&nbsp; fecha&nbsp; descripcion&nbsp; monto</code>.
+                    El tipo puede ser <strong>Gasto</strong> o <strong>Ingreso</strong>, la fecha
+                    <code>2026/05/18</code> (tambien sirve <code>18/05/2026</code>) y el monto al final
+                    con puntos de miles opcionales.
+                </p>
+                <form method="post" asp-action="Analizar">
+                    @Html.AntiForgeryToken()
+                    <textarea name="texto" class="form-control font-monospace" rows="10" required
+placeholder="Gasto 2026/05/18 pago a papa restante del techo 1.400.000
+Gasto 2026/05/26 pago emp certificacion 4piso 150.000
+Ingreso 2026/06/02 Pago casa de willi 924.000
+Ingreso 2026/06/08 pago parqueaderos 300.000"></textarea>
+                    <div class="form-text mb-3">
+                        En el siguiente paso veras una vista previa para asignar la cuenta y la categoria
+                        de cada movimiento antes de guardar. Nada se guarda todavia.
+                    </div>
+                    <button class="btn btn-primary"><i class="bi bi-search"></i> Analizar texto</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,213 @@
+@model PrestamoDetalleVm
+@{
+    ViewBag.Titulo = $"Prestamo de {Model.Prestamo.PersonaNombre} - Finanzas Personales";
+    var p = Model.Prestamo;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h4 class="mb-0">
+        <a asp-action="Index" class="text-decoration-none"><i class="bi bi-arrow-left"></i></a>
+        <i class="bi bi-clipboard-data"></i> Prestamo: @p.PersonaNombre
+        @if (p.Estado == "pagado") { <span class="badge text-bg-success">Pagado</span> }
+        else { <span class="badge text-bg-primary">Activo</span> }
+    </h4>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEditar">
+            <i class="bi bi-pencil"></i> Editar
+        </button>
+        <form method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar este prestamo y TODO su historial de pagos?');">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@p.Id" />
+            <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Eliminar</button>
+        </form>
+    </div>
+</div>
+
+<div class="text-muted small mb-3">
+    Prestado el <strong>@p.Fecha.ToString("dd MMM yyyy")</strong> al <strong>@p.TasaMensual.ToString("0.##")% mensual</strong>
+    @if (p.DiaPagoInteres.HasValue) { <span> &bull; interes pactado el dia <strong>@p.DiaPagoInteres</strong> de cada mes</span> }
+    @if (p.FechaPagoCapital.HasValue) { <span> &bull; capital pactado para el <strong>@p.FechaPagoCapital.Value.ToString("dd MMM yyyy")</strong></span> }
+    @if (!string.IsNullOrWhiteSpace(p.Notas)) { <br /> <i class="bi bi-sticky"></i> @p.Notas }
+</div>
+
+<div class="row g-2 mb-3 text-center">
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Capital inicial</div>
+        <div class="fw-bold">@p.Capital.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Abonado a capital</div>
+        <div class="fw-bold text-success">@p.AbonadoCapital.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Saldo capital</div>
+        <div class="fw-bold text-primary fs-6">@p.SaldoCapital.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Interes devengado</div>
+        <div class="fw-bold">@p.InteresDevengado.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Interes pagado</div>
+        <div class="fw-bold text-success">@p.InteresPagado.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Interes pendiente</div>
+        <div class="fw-bold @(p.InteresPendiente > 0 ? "text-warning" : "text-success")">@p.InteresPendiente.ToString("C0")</div>
+    </div></div></div>
+</div>
+
+@if (p.Estado == "activo")
+{
+    <div class="alert alert-light border shadow-sm small">
+        <i class="bi bi-calculator"></i> Con el saldo actual de <strong>@p.SaldoCapital.ToString("C0")</strong>,
+        el interes corre a <strong>@p.InteresMensualActual.ToString("C0")</strong> por mes
+        (recalculado automaticamente despues de cada abono a capital).
+    </div>
+}
+
+<div class="row g-3">
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-cash-coin"></i> Registrar pago</div>
+            <form class="card-body" method="post" asp-action="RegistrarPago" id="registrarPago">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="prestamoId" value="@p.Id" />
+                <div class="mb-3">
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="tipo" id="tipoInteres" value="pago_interes" checked onchange="sugerirMonto()" />
+                        <label class="btn btn-outline-warning" for="tipoInteres">Pago de interes</label>
+                        <input type="radio" class="btn-check" name="tipo" id="tipoAbono" value="abono_capital" onchange="sugerirMonto()" />
+                        <label class="btn btn-outline-success" for="tipoAbono">Abono a capital</label>
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Fecha</label>
+                        <input type="date" name="fecha" id="pgFecha" class="form-control" required
+                               value="@DateTime.Today.ToString("yyyy-MM-dd")" min="@p.Fecha.ToString("yyyy-MM-dd")" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Monto</label>
+                        <input type="number" name="monto" id="pgMonto" class="form-control" min="1" step="1" inputmode="numeric" required />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nota (opcional)</label>
+                    <input name="notas" class="form-control" maxlength="200" />
+                </div>
+                <button class="btn btn-primary w-100" @(p.Estado == "pagado" ? "disabled" : "")>
+                    <i class="bi bi-check-lg"></i> Registrar
+                </button>
+                @if (p.Estado == "pagado")
+                {
+                    <div class="form-text text-success mt-2"><i class="bi bi-check-circle"></i> El capital ya fue pagado en su totalidad.</div>
+                }
+            </form>
+        </div>
+    </div>
+    <div class="col-12 col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-clock-history"></i> Historial de pagos</div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr><th>Fecha</th><th>Tipo</th><th class="text-end">Monto</th><th class="d-none d-md-table-cell">Nota</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var pago in Model.Pagos)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@pago.Fecha.ToString("dd MMM yyyy")</td>
+                            <td>
+                                @if (pago.Tipo == "abono_capital") { <span class="badge text-bg-success">Abono a capital</span> }
+                                else { <span class="badge text-bg-warning">Pago de interes</span> }
+                            </td>
+                            <td class="text-end fw-bold">@pago.Monto.ToString("C0")</td>
+                            <td class="d-none d-md-table-cell text-muted small">@pago.Notas</td>
+                            <td class="text-end">
+                                <form method="post" asp-action="EliminarPago" onsubmit="return confirm('Eliminar este pago del historial?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@pago.Id" />
+                                    <input type="hidden" name="prestamoId" value="@p.Id" />
+                                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Pagos.Any())
+                    {
+                        <tr><td colspan="5" class="text-center text-muted py-4">Sin pagos registrados todavia.</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalEditar" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@p.Id" />
+            <input type="hidden" name="personaId" value="@p.PersonaId" />
+            <div class="modal-header">
+                <h5 class="modal-title">Editar prestamo de @p.PersonaNombre</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Fecha del prestamo</label>
+                        <input type="date" name="fecha" class="form-control" required value="@p.Fecha.ToString("yyyy-MM-dd")" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Capital</label>
+                        <input type="number" name="capital" class="form-control" min="1" step="1" required value="@p.Capital.ToString("0")" />
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Interes mensual (%)</label>
+                        <input type="number" name="tasaMensual" class="form-control" min="0" max="100" step="0.1" required
+                               value="@p.TasaMensual.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Dia de pago de interes</label>
+                        <input type="number" name="diaPagoInteres" class="form-control" min="1" max="31" value="@p.DiaPagoInteres" />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Pago del capital (si aplica)</label>
+                    <input type="date" name="fechaPagoCapital" class="form-control" value="@(p.FechaPagoCapital?.ToString("yyyy-MM-dd"))" />
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Notas</label>
+                    <textarea name="notas" class="form-control" maxlength="300" rows="2">@p.Notas</textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const interesPendiente = @p.InteresPendiente;
+    const saldoCapital = @p.SaldoCapital;
+
+    // Sugiere el monto segun el tipo: interes pendiente o saldo del capital.
+    function sugerirMonto() {
+        const esAbono = document.getElementById('tipoAbono').checked;
+        document.getElementById('pgMonto').value = esAbono ? saldoCapital : (interesPendiente > 0 ? interesPendiente : '');
+    }
+    sugerirMonto();
+    const accionCalendario=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["accion"].ToString()));
+    if(accionCalendario==='capital'){document.getElementById('tipoAbono').checked=true;sugerirMonto();document.getElementById('registrarPago').scrollIntoView({behavior:'smooth',block:'center'});}
+    else if(accionCalendario==='interes'){document.getElementById('tipoInteres').checked=true;sugerirMonto();document.getElementById('registrarPago').scrollIntoView({behavior:'smooth',block:'center'});}
+</script>
+}

@@ -1,0 +1,98 @@
+@model ImportarRevisarVm
+@{
+    ViewBag.Titulo = "Revisar importacion - Finanzas Personales";
+}
+
+<h4 class="mb-3"><i class="bi bi-check2-square"></i> Revisar antes de guardar</h4>
+
+@if (Model.LineasConError.Any())
+{
+    <div class="alert alert-warning">
+        <strong><i class="bi bi-exclamation-triangle"></i> @Model.LineasConError.Count linea(s) no se pudieron interpretar</strong>
+        (no se guardaran, puedes corregirlas y volver a importarlas):
+        <ul class="mb-0 small font-monospace">
+            @foreach (var l in Model.LineasConError) { <li>@l</li> }
+        </ul>
+    </div>
+}
+
+<p class="text-muted">Asigna la cuenta y la categoria de cada movimiento. Desmarca las filas que no quieras guardar.</p>
+
+<form method="post" asp-action="Guardar">
+    @Html.AntiForgeryToken()
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th></th><th>Tipo</th><th>Fecha</th><th>Descripcion</th>
+                        <th class="text-end">Monto</th><th>Cuenta</th><th>Categoria</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @for (var i = 0; i < Model.Filas.Count; i++)
+                {
+                    var f = Model.Filas[i];
+                    var categoriasDelTipo = Model.Categorias.Where(c => c.Tipo == (f.Tipo == "ingreso" ? "ingreso" : "gasto")).ToList();
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input" name="filas[@i].Incluir" value="true" checked />
+                            <input type="hidden" name="filas[@i].Incluir" value="false" />
+                            <input type="hidden" name="filas[@i].Tipo" value="@f.Tipo" />
+                            <input type="hidden" name="filas[@i].Fecha" value="@f.Fecha.ToString("yyyy-MM-dd")" />
+                            <input type="hidden" name="filas[@i].Monto" value="@f.Monto.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                        </td>
+                        <td>
+                            @if (f.Tipo == "ingreso") { <span class="badge text-bg-success">Ingreso</span> }
+                            else { <span class="badge text-bg-danger">Gasto</span> }
+                        </td>
+                        <td class="text-nowrap">@f.Fecha.ToString("dd MMM yyyy")</td>
+                        <td><input name="filas[@i].Descripcion" class="form-control form-control-sm" value="@f.Descripcion" maxlength="200" /></td>
+                        <td class="text-end fw-bold text-nowrap">@f.Monto.ToString("C0")</td>
+                        <td>
+                            <select name="filas[@i].CuentaId" class="form-select form-select-sm sel-cuenta">
+                                @foreach (var c in Model.Cuentas)
+                                {
+                                    <option value="@c.Id">@c.Nombre@(c.Tipo == "tarjeta_credito" ? " (TC)" : "")</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <select name="filas[@i].CategoriaId" class="form-select form-select-sm sel-categoria" data-tipo="@f.Tipo">
+                                @foreach (var c in categoriasDelTipo)
+                                {
+                                    <option value="@c.Id">@c.Nombre</option>
+                                }
+                            </select>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Guardar @Model.Filas.Count movimiento(s)</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="aplicarPrimeraATodas()">
+            <i class="bi bi-arrow-down-square"></i> Aplicar cuenta y categoria de la 1a fila a todas
+        </button>
+        <a class="btn btn-outline-danger" asp-action="Index"><i class="bi bi-x-lg"></i> Cancelar</a>
+    </div>
+</form>
+
+@section Scripts {
+<script>
+    // Copia la cuenta de la primera fila a todas, y la categoria a las filas del mismo tipo.
+    function aplicarPrimeraATodas() {
+        const cuentas = document.querySelectorAll('.sel-cuenta');
+        const categorias = document.querySelectorAll('.sel-categoria');
+        if (!cuentas.length) return;
+        const cuentaBase = cuentas[0].value;
+        cuentas.forEach(s => s.value = cuentaBase);
+        const tipoBase = categorias[0].dataset.tipo;
+        const categoriaBase = categorias[0].value;
+        categorias.forEach(s => { if (s.dataset.tipo === tipoBase) s.value = categoriaBase; });
+    }
+</script>
+}

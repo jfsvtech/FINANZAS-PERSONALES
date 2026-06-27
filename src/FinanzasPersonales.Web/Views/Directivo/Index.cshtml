@@ -1,0 +1,23 @@
+@model DirectivoVm
+@{
+    ViewBag.Titulo = "Analisis directivo - Finanzas Personales";
+}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div><span class="page-eyebrow">Vision ejecutiva</span><h3 class="mb-1"><i class="bi bi-gem text-warning"></i> Analisis directivo</h3><p class="text-muted mb-0">Panorama consolidado de tu posicion financiera.</p></div>
+    <div class="d-flex gap-2"><a class="btn btn-outline-primary btn-sm" asp-controller="Dashboard" asp-action="Index"><i class="bi bi-wallet2"></i> Analisis de gastos</a><a class="btn btn-outline-primary btn-sm" asp-controller="Prestamos" asp-action="Tablero"><i class="bi bi-cash-stack"></i> Analisis de prestamos</a></div>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-6 col-xl-3"><div class="card executive-kpi premium h-100"><div class="card-body"><span>Patrimonio neto estimado</span><strong>@Model.PatrimonioNeto.ToString("C0")</strong><small>Liquidez + cartera + metas - deuda</small></div></div></div>
+    <div class="col-6 col-xl-3"><div class="card executive-kpi h-100"><div class="card-body"><span>Liquidez estimada</span><strong class="text-primary">@Model.Liquidez.ToString("C0")</strong><small>Disponible en cuentas</small></div></div></div>
+    <div class="col-6 col-xl-3"><div class="card executive-kpi h-100"><div class="card-body"><span>Activos productivos</span><strong>@((Model.SaldoPrestamos+Model.ValorInversiones).ToString("C0"))</strong><small>Inversiones @Model.ValorInversiones.ToString("C0") · cartera @Model.SaldoPrestamos.ToString("C0")</small></div></div></div>
+    <div class="col-6 col-xl-3"><div class="card executive-kpi h-100"><div class="card-body"><span>Resultado del mes</span><strong class="@(Model.ResultadoMes>=0?"text-success":"text-danger")">@Model.ResultadoMes.ToString("C0")</strong><small>Ingresos menos gastos</small></div></div></div>
+</div>
+<div class="row g-3">
+    <div class="col-12 col-lg-7"><div class="card h-100"><div class="card-header fw-bold"><i class="bi bi-graph-up"></i> Evolucion financiera</div><div class="card-body"><canvas id="directivoEvolucion"></canvas></div></div></div>
+    <div class="col-12 col-lg-5"><div class="card h-100"><div class="card-header fw-bold"><i class="bi bi-pie-chart"></i> Activos gestionados</div><div class="card-body"><canvas id="directivoComposicion"></canvas><div class="executive-debt mt-3"><span>Deuda de tarjetas</span><strong class="text-danger">@Model.DeudaTarjetas.ToString("C0")</strong></div></div></div></div>
+</div>
+@section Scripts {<script>
+const dc=themeColors(),ds=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.SerieMensual.Select(x=>new{etiqueta=x.Etiqueta,ingresos=x.Ingresos,gastos=x.Gastos}))),comp=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Composicion.Select(x=>new{nombre=x.Nombre,total=x.Total,color=x.Color})));
+new Chart(document.getElementById('directivoEvolucion'),{type:'line',data:{labels:ds.map(x=>x.etiqueta),datasets:[{label:'Ingresos',data:ds.map(x=>x.ingresos),borderColor:dc.gold,tension:.3},{label:'Gastos',data:ds.map(x=>x.gastos),borderColor:dc.purple,tension:.3}]},options:{plugins:{legend:{position:'bottom'}}}});
+new Chart(document.getElementById('directivoComposicion'),{type:'doughnut',data:{labels:comp.map(x=>x.nombre),datasets:[{data:comp.map(x=>x.total),backgroundColor:comp.map(x=>x.color)}]},options:{plugins:{legend:{position:'bottom'}}}});
+</script>}

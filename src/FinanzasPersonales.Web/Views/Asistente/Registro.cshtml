@@ -1,0 +1,39 @@
+@model RegistroNaturalVm
+@{
+    ViewBag.Titulo = "Registro mediante voz o texto";
+}
+<div class="page-heading mb-3"><span class="page-eyebrow">Registro rapido</span><h3 class="mb-1"><i class="bi bi-mic text-primary"></i> Habla o escribe el movimiento</h3><p class="text-muted mb-0">Ejemplo: "Gaste 45.000 en Mercado con Efectivo ayer". Siempre podras revisar antes de guardar.</p></div>
+<div class="row g-3">
+    <div class="col-12 col-lg-5"><div class="card"><form method="post" asp-action="Interpretar" class="card-body" id="formNatural">@Html.AntiForgeryToken()
+        <label class="form-label fw-bold">Que ocurrio?</label><textarea name="texto" id="textoNatural" class="form-control natural-input" rows="5" required placeholder="Recibi salario por 4.000.000 en Bancolombia">@Model.Texto</textarea>
+        <div class="voice-controls mt-3"><button type="button" class="btn btn-premium" id="btnVoz"><i class="bi bi-mic"></i><span> Dictar por voz</span></button><span class="voice-status" id="estadoVoz">Pulsa y habla con naturalidad.</span></div>
+        <button class="btn btn-primary w-100 mt-3"><i class="bi bi-stars"></i> Interpretar movimiento</button><p class="form-text mt-2 mb-0">El dictado requiere permiso de microfono y funciona mejor en Chrome o Edge mediante HTTPS. Dependiendo del navegador, el audio puede procesarse mediante su servicio de reconocimiento.</p>
+    </form></div></div>
+    <div class="col-12 col-lg-7">
+        @if (Model.Interpretado)
+        {
+            <form method="post" asp-action="GuardarNatural" class="card"><div class="card-header fw-bold"><i class="bi bi-check2-circle"></i> Confirma la interpretacion</div><div class="card-body">@Html.AntiForgeryToken()
+                <div class="row g-2 mb-3"><div class="col-6"><label class="form-label">Tipo</label><select name="tipo" class="form-select"><option value="gasto" selected="@(Model.Tipo=="gasto")">Gasto</option><option value="ingreso" selected="@(Model.Tipo=="ingreso")">Ingreso</option></select></div><div class="col-6"><label class="form-label">Fecha</label><input type="date" name="fecha" class="form-control" value="@Model.Fecha.ToString("yyyy-MM-dd")" required /></div></div>
+                <div class="mb-3"><label class="form-label">Monto</label><input type="number" name="monto" class="form-control" value="@Model.Monto" min="1" step=".01" required /></div>
+                <div class="row g-2 mb-3"><div class="col-6"><label class="form-label">Cuenta</label><select name="cuentaId" class="form-select" required>@foreach(var c in Model.Cuentas){<option value="@c.Id" selected="@(c.Id==Model.CuentaId)">@c.Nombre</option>}</select></div><div class="col-6"><label class="form-label">Categoria</label><select name="categoriaId" class="form-select" required>@foreach(var c in Model.Categorias.Where(x=>x.Tipo==Model.Tipo)){<option value="@c.Id" selected="@(c.Id==Model.CategoriaId)">@c.Nombre</option>}</select></div></div>
+                <div class="mb-3"><label class="form-label">Descripcion</label><input name="descripcion" class="form-control" value="@Model.Descripcion" maxlength="200" /></div><button class="btn btn-premium w-100"><i class="bi bi-check-lg"></i> Confirmar y guardar</button>
+            </div></form>
+        }
+        else { <div class="empty-state h-100"><i class="bi bi-chat-square-text"></i>Habla o escribe una frase para ver aqui la interpretacion.</div> }
+    </div>
+</div>
+@section Scripts {
+<script>
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+const voiceButton=document.getElementById('btnVoz'),voiceText=document.getElementById('textoNatural'),voiceStatus=document.getElementById('estadoVoz');
+if(!SpeechRecognition){voiceButton.disabled=true;voiceStatus.textContent='Este navegador no admite dictado. Puedes escribir normalmente.';}
+else{
+ const recognition=new SpeechRecognition();recognition.lang='es-CO';recognition.interimResults=true;recognition.continuous=false;let finalText='',listening=false;
+ recognition.onstart=()=>{finalText='';listening=true;voiceButton.classList.add('listening');voiceButton.querySelector('i').className='bi bi-stop-circle';voiceStatus.textContent='Escuchando...';};
+ recognition.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)finalText+=e.results[i][0].transcript;else interim+=e.results[i][0].transcript;}voiceText.value=(finalText||interim).trim();};
+ recognition.onerror=e=>{voiceStatus.textContent=e.error==='not-allowed'?'Debes permitir el acceso al microfono.':'No pude reconocer la voz. Intenta nuevamente.';};
+ recognition.onend=()=>{listening=false;voiceButton.classList.remove('listening');voiceButton.querySelector('i').className='bi bi-mic';voiceStatus.textContent=voiceText.value?'Texto listo. Revisalo o interpretalo.':'Pulsa y habla con naturalidad.';};
+ voiceButton.addEventListener('click',()=>listening?recognition.stop():recognition.start());
+}
+</script>
+}

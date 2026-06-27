@@ -1,0 +1,132 @@
+@model List<Persona>
+@{
+    ViewBag.Titulo = "Personas - Finanzas Personales";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-person-rolodex"></i> Personas</h4>
+    <button class="btn btn-success btn-sm" onclick="abrirNueva()"><i class="bi bi-plus-lg"></i> Nueva persona</button>
+</div>
+
+<p class="text-muted small">Las personas se asocian a los prestamos. Crea aqui la persona antes de registrarle un credito.</p>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Nombre</th><th class="d-none d-md-table-cell">Telefono</th><th class="d-none d-md-table-cell">Email</th>
+                    <th>Prestamos activos</th><th class="text-end">Deuda actual</th><th>Estado</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var p in Model)
+            {
+                <tr class="@(p.Activo ? "" : "table-secondary text-muted")">
+                    <td><a asp-action="Resumen" asp-route-id="@p.Id" class="text-decoration-none fw-semibold"><i class="bi bi-person-circle me-1"></i> @p.Nombre</a></td>
+                    <td class="d-none d-md-table-cell">@p.Telefono</td>
+                    <td class="d-none d-md-table-cell">@p.Email</td>
+                    <td>
+                        @if (p.PrestamosActivos > 0) { <a asp-action="PrestamosPersona" asp-route-id="@p.Id" class="badge text-bg-primary text-decoration-none" title="Ver prestamos activos">@p.PrestamosActivos</a> }
+                        else { <span class="text-muted">0</span> }
+                    </td>
+                    <td class="text-end">
+                        @if (p.PrestamosActivos > 0)
+                        {
+                            <a asp-action="PrestamosPersona" asp-route-id="@p.Id" class="fw-bold text-danger text-decoration-none" title="Ver detalle de la deuda">@p.DeudaActual.ToString("C0") <i class="bi bi-chevron-right small"></i></a>
+                        }
+                        else { <span class="text-muted">$0</span> }
+                    </td>
+                    <td>@(p.Activo ? "Activa" : "Inactiva")</td>
+                    <td class="text-end text-nowrap">
+                        <a class="btn btn-sm btn-outline-primary" asp-action="Resumen" asp-route-id="@p.Id" title="Resumen completo"><i class="bi bi-clipboard-data"></i></a>
+                        <button class="btn btn-sm btn-outline-secondary"
+                                onclick='abrirEditar(@System.Text.Json.JsonSerializer.Serialize(new {
+                                    id = p.Id, nombre = p.Nombre, telefono = p.Telefono, email = p.Email,
+                                    documento = p.Documento, notas = p.Notas, activo = p.Activo }))'>
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <form class="d-inline" method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar a @p.Nombre?');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@p.Id" />
+                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            @if (!Model.Any())
+            {
+                <tr><td colspan="7" class="text-center text-muted py-4">No tienes personas registradas todavia.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalPersona" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="peId" value="0" />
+            <div class="modal-header">
+                <h5 class="modal-title" id="peTitulo">Nueva persona</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nombre completo</label>
+                    <input name="nombre" id="peNombre" class="form-control" maxlength="100" required />
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Telefono</label>
+                        <input name="telefono" id="peTelefono" class="form-control" maxlength="30" inputmode="tel" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Documento</label>
+                        <input name="documento" id="peDocumento" class="form-control" maxlength="30" />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input name="email" id="peEmail" type="email" class="form-control" maxlength="100" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Notas</label>
+                    <textarea name="notas" id="peNotas" class="form-control" maxlength="300" rows="2"></textarea>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" name="activo" id="peActivo" value="true" checked />
+                    <label class="form-check-label" for="peActivo">Activa</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const modal = new bootstrap.Modal(document.getElementById('modalPersona'));
+
+    function abrirNueva() {
+        document.getElementById('peId').value = 0;
+        document.getElementById('peTitulo').textContent = 'Nueva persona';
+        ['peNombre', 'peTelefono', 'peDocumento', 'peEmail', 'peNotas'].forEach(x => document.getElementById(x).value = '');
+        document.getElementById('peActivo').checked = true;
+        modal.show();
+    }
+    function abrirEditar(p) {
+        document.getElementById('peId').value = p.id;
+        document.getElementById('peTitulo').textContent = 'Editar persona';
+        document.getElementById('peNombre').value = p.nombre;
+        document.getElementById('peTelefono').value = p.telefono || '';
+        document.getElementById('peDocumento').value = p.documento || '';
+        document.getElementById('peEmail').value = p.email || '';
+        document.getElementById('peNotas').value = p.notas || '';
+        document.getElementById('peActivo').checked = p.activo;
+        modal.show();
+    }
+</script>
+}

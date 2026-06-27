@@ -1,0 +1,254 @@
+@model InicioVm
+@{
+    ViewBag.Titulo = "Inicio - Finanzas Personales";
+    var hoy = DateTime.Today;
+    var esAdmin = User.HasClaim("EsAdmin", "true");
+    var puedeGastos = esAdmin || User.HasClaim("PermisoGastos", "true");
+    var puedePrestamos = esAdmin || User.HasClaim("PermisoPrestamos", "true");
+    var puedeInversiones = esAdmin || User.HasClaim("PermisoInversiones", "true");
+    var puedeCalendario = esAdmin || User.HasClaim("PermisoCalendario", "true");
+}
+
+<div class="portal-hero mb-4">
+    <div>
+        <span class="portal-kicker">Resumen personal</span>
+        <h2 class="mb-1">Hola, @User.Identity!.Name</h2>
+        <p class="mb-0 opacity-75 text-capitalize">@hoy.ToString("dddd, dd 'de' MMMM 'de' yyyy")</p>
+    </div>
+    <div class="portal-hero-actions">
+        @if (puedeGastos)
+        {
+        <a class="btn btn-light" asp-controller="Movimientos" asp-action="Index" asp-route-nuevo="true">
+            <i class="bi bi-plus-lg"></i> Registrar movimiento
+        </a>
+        }
+        @if (puedePrestamos)
+        {
+        <a class="btn btn-outline-light" asp-controller="Prestamos" asp-action="Index" asp-route-nuevo="true">
+            <i class="bi bi-cash-stack"></i> Nuevo prestamo
+        </a>
+        }
+    </div>
+</div>
+
+@if (puedeGastos && (Model.CuentasActivas == 0 || Model.CategoriasActivas == 0))
+{
+    <div class="setup-callout mb-4">
+        <div class="setup-icon"><i class="bi bi-sliders"></i></div>
+        <div class="flex-grow-1">
+            <strong>Completa tu espacio personal</strong>
+            <div class="small text-muted">Configura tus propias cuentas y categorias para comenzar a registrar movimientos.</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            @if (Model.CuentasActivas == 0)
+            {
+                <a class="btn btn-outline-primary btn-sm" asp-controller="Cuentas" asp-action="Index"><i class="bi bi-bank"></i> Crear cuenta</a>
+            }
+            @if (Model.CategoriasActivas == 0)
+            {
+                <a class="btn btn-outline-primary btn-sm" asp-controller="Categorias" asp-action="Index"><i class="bi bi-tags"></i> Crear categorias</a>
+            }
+        </div>
+    </div>
+}
+
+<div class="row g-4">
+    @if (puedeGastos)
+    {
+    <div class="col-12 col-lg-6">
+        <div class="card modulo-card modulo-gastos border-0 shadow h-100">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="modulo-icono bg-primary text-white"><i class="bi bi-wallet2"></i></div>
+                    <div class="ms-3">
+                        <h5 class="mb-0">Gestion de Finanzas</h5>
+                        <span class="text-muted small text-capitalize">@hoy.ToString("MMMM yyyy")</span>
+                    </div>
+                </div>
+                <ul class="list-group list-group-flush mb-3">
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Ingresos del mes</span>
+                        <span class="fw-bold text-success">@Model.IngresosMes.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Gastos del mes</span>
+                        <span class="fw-bold text-danger">@Model.GastosMes.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Balance del mes</span>
+                        <span class="fw-bold @(Model.BalanceMes >= 0 ? "text-success" : "text-danger")">@Model.BalanceMes.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">
+                            Disponible
+                            <a asp-controller="Dashboard" asp-action="Index" class="text-muted" title="Configurar saldo anterior"><i class="bi bi-gear"></i></a>
+                        </span>
+                        <span class="fw-bold @(Model.DisponibleMes >= 0 ? "text-primary" : "text-danger")">@Model.DisponibleMes.ToString("C0")</span>
+                    </li>
+                    @if (Model.IncluirSaldoAnterior)
+                    {
+                        <li class="list-group-item d-flex justify-content-between px-0 small">
+                            <span class="text-muted">Incluye saldo anterior</span>
+                            <span class="text-muted">@Model.SaldoAnterior.ToString("C0")</span>
+                        </li>
+                    }
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Deuda tarjetas hoy</span>
+                        <span class="fw-bold text-warning">@Model.DeudaTarjetas.ToString("C0")</span>
+                    </li>
+                </ul>
+                @if (Model.PeriodicosPendientes > 0)
+                {
+                    <a asp-controller="Periodicos" asp-action="Index" class="d-block alert alert-warning py-2 small text-decoration-none">
+                        <i class="bi bi-bell"></i> Tienes <strong>@Model.PeriodicosPendientes</strong> movimiento(s) recurrente(s) pendiente(s) este mes
+                    </a>
+                }
+                <div class="d-flex gap-2">
+                    <a class="btn btn-primary flex-fill" asp-controller="Dashboard" asp-action="Index">
+                        <i class="bi bi-speedometer2"></i> Tablero
+                    </a>
+                    <a class="btn btn-outline-primary flex-fill" asp-controller="Movimientos" asp-action="Index">
+                        <i class="bi bi-plus-lg"></i> Movimientos
+                    </a>
+                </div>
+                <div class="accesos-modulo mt-3 pt-3 border-top">
+                    <span class="text-muted small me-1">Accesos:</span>
+                    <a asp-controller="Importar" asp-action="Index"><i class="bi bi-upload"></i> Importar</a>
+                    <a asp-controller="Periodicos" asp-action="Index"><i class="bi bi-arrow-repeat"></i> Recurrentes</a>
+                    <a asp-controller="Presupuestos" asp-action="Index"><i class="bi bi-bullseye"></i> Presupuestos</a>
+                    <a asp-controller="Cuentas" asp-action="Index"><i class="bi bi-bank"></i> Cuentas</a>
+                    <a asp-controller="Categorias" asp-action="Index"><i class="bi bi-tags"></i> Categorias</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    }
+
+    @if (puedePrestamos)
+    {
+    <div class="col-12 col-lg-6">
+        <div class="card modulo-card modulo-prestamos border-0 shadow h-100">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="modulo-icono bg-success text-white"><i class="bi bi-cash-stack"></i></div>
+                    <div class="ms-3">
+                        <h5 class="mb-0">Gestion de Prestamos</h5>
+                        <span class="text-muted small">@Model.PrestamosActivos activo(s)</span>
+                    </div>
+                </div>
+                <ul class="list-group list-group-flush mb-3">
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Saldo por cobrar</span>
+                        <span class="fw-bold text-primary">@Model.SaldoPorCobrar.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Interes pendiente</span>
+                        <span class="fw-bold @(Model.InteresPendiente > 0 ? "text-warning" : "text-success")">@Model.InteresPendiente.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Interes mensual esperado</span>
+                        <span class="fw-bold text-success">@Model.InteresMensualEsperado.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Prestamos activos</span>
+                        <span class="fw-bold">@Model.PrestamosActivos</span>
+                    </li>
+                </ul>
+                @if (Model.PrestamosAtrasados > 0)
+                {
+                    <a asp-controller="Prestamos" asp-action="Tablero" class="d-block alert alert-danger py-2 small text-decoration-none">
+                        <i class="bi bi-exclamation-triangle"></i> <strong>@Model.PrestamosAtrasados</strong> prestamo(s) con interes atrasado
+                    </a>
+                }
+                <div class="d-flex gap-2">
+                    <a class="btn btn-success flex-fill" asp-controller="Prestamos" asp-action="Tablero">
+                        <i class="bi bi-graph-up-arrow"></i> Tablero
+                    </a>
+                    <a class="btn btn-outline-success flex-fill" asp-controller="Prestamos" asp-action="Index">
+                        <i class="bi bi-cash-stack"></i> Prestamos
+                    </a>
+                </div>
+                <div class="accesos-modulo accesos-prestamos mt-3 pt-3 border-top">
+                    <span class="text-muted small me-1">Accesos:</span>
+                    <a asp-controller="Prestamos" asp-action="Index" asp-route-nuevo="true"><i class="bi bi-plus-circle"></i> Nuevo prestamo</a>
+                    <a asp-controller="Personas" asp-action="Index"><i class="bi bi-person-rolodex"></i> Personas</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    }
+</div>
+
+@if (puedeInversiones)
+{
+<div class="card modulo-card modulo-inversiones border-0 shadow mt-4">
+    <div class="card-body p-4">
+        <div class="row g-3 align-items-center">
+            <div class="col-12 col-lg-4">
+                <div class="d-flex align-items-center">
+                    <div class="modulo-icono inversion-home-icon"><i class="bi bi-briefcase"></i></div>
+                    <div class="ms-3"><h5 class="mb-0">Gestion de Inversiones</h5><span class="text-muted small">@Model.InversionesActivas activa(s)</span></div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-2"><span class="text-muted small d-block">Capital aportado</span><strong>@Model.CapitalInversiones.ToString("C0")</strong></div>
+            <div class="col-6 col-lg-2"><span class="text-muted small d-block">Valor actual</span><strong class="text-warning">@Model.ValorInversiones.ToString("C0")</strong></div>
+            <div class="col-6 col-lg-2"><span class="text-muted small d-block">Ganancia real</span><strong class="@(Model.GananciaInversiones>=0?"text-success":"text-danger")">@Model.GananciaInversiones.ToString("C0")</strong></div>
+            <div class="col-6 col-lg-2 d-flex gap-2 justify-content-lg-end"><a class="btn btn-outline-primary btn-sm" asp-controller="Inversiones" asp-action="Tablero"><i class="bi bi-graph-up"></i></a><a class="btn btn-premium btn-sm" asp-controller="Inversiones" asp-action="Index"><i class="bi bi-briefcase"></i> Portafolio</a></div>
+        </div>
+        @if(Model.RetornosProximos>0){<a class="d-block alert alert-warning py-2 small text-decoration-none mt-3 mb-0" asp-controller="Inversiones" asp-action="Tablero"><i class="bi bi-calendar-event"></i> Tienes <strong>@Model.RetornosProximos</strong> retorno(s) esperado(s) en los proximos 60 dias.</a>}
+    </div>
+</div>
+}
+
+<div class="row g-3 mt-1">
+    @if (puedeCalendario)
+    {
+    <div class="col-6">
+        <a class="home-action-card text-decoration-none" asp-controller="Calendario" asp-action="Index">
+            <span class="home-action-icon bg-warning-subtle text-warning"><i class="bi bi-bell"></i></span>
+            <span><strong>Calendario financiero</strong><small>Revisar vencimientos y proximos eventos</small></span>
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+    }
+    @if (puedeGastos)
+    {
+    <div class="col-6">
+        <a class="home-action-card text-decoration-none" asp-controller="Metas" asp-action="Index">
+            <span class="home-action-icon bg-primary-subtle text-primary"><i class="bi bi-flag"></i></span>
+            <span><strong>@Model.MetasActivas meta(s)</strong><small>Planificar y registrar aportes</small></span>
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+    }
+</div>
+
+@if (puedeGastos)
+{
+<div class="card border-0 shadow-sm mt-4 personal-space-card">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <span class="page-eyebrow">Tu espacio</span>
+            <h5 class="mb-1">Configuracion personal</h5>
+            <p class="text-muted small mb-0">Tus cuentas y categorias son privadas e independientes de los demas usuarios.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-primary btn-sm" asp-controller="Cuentas" asp-action="Index">
+                <i class="bi bi-bank"></i> @Model.CuentasActivas cuentas
+            </a>
+            <a class="btn btn-outline-primary btn-sm" asp-controller="Categorias" asp-action="Index">
+                <i class="bi bi-tags"></i> @Model.CategoriasActivas categorias
+            </a>
+        </div>
+    </div>
+</div>
+}
+
+@if (!puedeGastos && !puedePrestamos && !puedeInversiones && !puedeCalendario)
+{
+    <div class="empty-state mt-4">
+        <i class="bi bi-lock"></i>
+        <h5>Tu suscripcion aun no tiene modulos activos</h5>
+        <p>Contacta al administrador para habilitar Gastos, Prestamos, Inversiones o permisos adicionales.</p>
+    </div>
+}

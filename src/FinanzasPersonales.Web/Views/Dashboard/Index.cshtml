@@ -1,0 +1,317 @@
+@model DashboardVm
+@{
+    ViewBag.Titulo = "Tablero - Finanzas Personales";
+    var fechaActual = new DateTime(Model.Anio, Model.Mes, 1);
+    var anterior = fechaActual.AddMonths(-1);
+    var siguiente = fechaActual.AddMonths(1);
+    var nombreMes = fechaActual.ToString("MMMM yyyy");
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h4 class="mb-0"><i class="bi bi-speedometer2"></i> Tablero</h4>
+    <div class="btn-group">
+        <a class="btn btn-outline-primary" asp-action="Index" asp-route-anio="@anterior.Year" asp-route-mes="@anterior.Month"><i class="bi bi-chevron-left"></i></a>
+        <span class="btn btn-primary text-capitalize fw-bold" style="pointer-events:none;">@nombreMes</span>
+        <a class="btn btn-outline-primary" asp-action="Index" asp-route-anio="@siguiente.Year" asp-route-mes="@siguiente.Month"><i class="bi bi-chevron-right"></i></a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small">Ingresos del mes</div>
+                <div class="fs-4 fw-bold text-success">@Model.IngresosMes.ToString("C0")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small">Gastos del mes <span title="Incluye compras con tarjeta del mes"><i class="bi bi-info-circle"></i></span></div>
+                <div class="fs-4 fw-bold text-danger">@Model.GastosMes.ToString("C0")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small">Balance del mes</div>
+                <div class="fs-4 fw-bold @(Model.Balance >= 0 ? "text-success" : "text-danger")">@Model.Balance.ToString("C0")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small">Deuda tarjetas hoy</div>
+                <div class="fs-4 fw-bold text-warning">@Model.DeudaTarjetas.ToString("C0")</div>
+                <div class="text-muted small">Pagado este mes: @Model.PagosTarjetaMes.ToString("C0")</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3 saldo-arrastre-card">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <span class="page-eyebrow">Dinero disponible</span>
+            <div class="d-flex align-items-baseline gap-2 flex-wrap">
+                <strong class="fs-4 @(Model.DisponibleMes >= 0 ? "text-primary" : "text-danger")">@Model.DisponibleMes.ToString("C0")</strong>
+                <span class="text-muted small">
+                    = balance del mes @Model.Balance.ToString("C0")
+                    @if (Model.IncluirSaldoAnterior)
+                    {
+                        <span> + saldo anterior @Model.SaldoAnterior.ToString("C0")</span>
+                    }
+                </span>
+            </div>
+            <div class="text-muted small">
+                El saldo anterior es el acumulado de ingresos menos gastos antes de @nombreMes.
+                Pagos de tarjeta y transferencias no se duplican.
+            </div>
+        </div>
+        <form method="post" asp-action="GuardarConfiguracionSaldo">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="anio" value="@Model.Anio" />
+            <input type="hidden" name="mes" value="@Model.Mes" />
+            <input type="hidden" name="incluirSaldoAnterior" value="@(!Model.IncluirSaldoAnterior ? "true" : "false")" />
+            <button class="btn @(Model.IncluirSaldoAnterior ? "btn-primary" : "btn-outline-primary") btn-sm">
+                <i class="bi @(Model.IncluirSaldoAnterior ? "bi-toggle-on" : "bi-toggle-off")"></i>
+                @(Model.IncluirSaldoAnterior ? "Saldo anterior incluido" : "Incluir saldo anterior")
+            </button>
+        </form>
+    </div>
+</div>
+
+@if (Model.Alertas.Any())
+{
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <strong><i class="bi bi-bell text-warning"></i> Centro de alertas</strong>
+            <span class="badge text-bg-warning">@Model.Alertas.Count</span>
+        </div>
+        <div class="list-group list-group-flush">
+            @foreach (var alerta in Model.Alertas)
+            {
+                <a asp-controller="@alerta.Controller" asp-action="@alerta.Action" class="list-group-item list-group-item-action alert-row">
+                    <span class="alert-icon text-@alerta.Tipo"><i class="bi @alerta.Icono"></i></span>
+                    <span class="flex-grow-1"><strong class="d-block">@alerta.Titulo</strong><span class="text-muted small">@alerta.Detalle</span></span>
+                    <i class="bi bi-chevron-right text-muted"></i>
+                </a>
+            }
+        </div>
+    </div>
+}
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-arrow-left-right"></i> Comparacion con el mes anterior</div>
+            <div class="card-body">
+                @{
+                    var difIngresos = Model.IngresosMes - Model.IngresosMesAnterior;
+                    var difGastos = Model.GastosMes - Model.GastosMesAnterior;
+                }
+                <div class="comparison-line"><span>Ingresos</span><strong>@Model.IngresosMes.ToString("C0")</strong><span class="@(difIngresos >= 0 ? "text-success" : "text-danger")">@(difIngresos >= 0 ? "+" : "")@difIngresos.ToString("C0")</span></div>
+                <div class="comparison-line"><span>Gastos</span><strong>@Model.GastosMes.ToString("C0")</strong><span class="@(difGastos <= 0 ? "text-success" : "text-danger")">@(difGastos >= 0 ? "+" : "")@difGastos.ToString("C0")</span></div>
+                <div class="comparison-line"><span>Tasa de ahorro</span><strong class="@(Model.TasaAhorro >= 0 ? "text-success" : "text-danger")">@Model.TasaAhorro%</strong><span class="text-muted">del ingreso</span></div>
+                <hr />
+                <div class="small fw-bold mb-2">Categorias que mas cambiaron</div>
+                @foreach (var c in Model.ComparacionCategorias.OrderByDescending(x => Math.Abs(x.Diferencia)).Take(4))
+                {
+                    <div class="d-flex justify-content-between align-items-center small py-1"><span><span class="category-icon-sm me-1" style="color:@c.Color;background:color-mix(in srgb,@c.Color 14%,transparent);"><i class="bi @c.Icono"></i></span>@c.Nombre</span><span class="@(c.Diferencia <= 0 ? "text-success" : "text-danger")">@(c.Diferencia >= 0 ? "+" : "")@c.Diferencia.ToString("C0")</span></div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-activity"></i> Balance acumulado durante el mes</div>
+            <div class="card-body"><canvas id="graficaFlujo" style="max-height:260px"></canvas></div>
+        </div>
+    </div>
+</div>
+
+@if (Model.PeriodicosPendientes.Any())
+{
+    <div class="alert alert-warning shadow-sm">
+        <strong><i class="bi bi-bell"></i> Recurrentes pendientes del mes:</strong>
+        @foreach (var g in Model.PeriodicosPendientes)
+        {
+            <span class="badge @(g.Tipo == "ingreso" ? "text-bg-success" : "text-bg-warning") me-1"><i class="bi @g.CategoriaIcono me-1"></i>@g.Nombre (@g.MontoEstimado.ToString("C0") - @g.ProximaFecha.ToString("dd MMM"))</span>
+        }
+        <a asp-controller="Periodicos" asp-action="Index" class="alert-link ms-1">Registrarlos aqui</a>
+    </div>
+}
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-pie-chart"></i> Gastos por categoria</div>
+            <div class="card-body">
+                @if (Model.GastosPorCategoria.Any())
+                {
+                    <canvas id="graficaCategorias" style="max-height:300px;"></canvas>
+                    <div class="chart-category-legend mt-3">
+                        @{
+                            var totalCategorias = Model.GastosPorCategoria.Sum(x => x.Total);
+                        }
+                        @foreach (var c in Model.GastosPorCategoria)
+                        {
+                            var porcentaje = totalCategorias > 0 ? Math.Round(c.Total * 100 / totalCategorias, 0) : 0;
+                            <div class="chart-category-item">
+                                <span class="entity-icon" style="color:@c.Color;background:color-mix(in srgb,@c.Color 14%,transparent);"><i class="bi @c.Icono"></i></span>
+                                <span><strong>@c.Nombre</strong><small>@porcentaje% del gasto</small></span>
+                                <strong>@c.Total.ToString("C0")</strong>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted text-center my-5">Sin gastos registrados este mes.</p>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-bar-chart"></i> Ingresos vs gastos (ultimos 12 meses)</div>
+            <div class="card-body">
+                <canvas id="graficaEvolucion" style="max-height:300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-layers"></i> Gastos fijos vs variables</div>
+            <div class="card-body"><canvas id="graficaClases" style="max-height:260px"></canvas></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-table"></i> Comparacion por categoria</div>
+            <div class="card-body p-0"><div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+                <thead class="table-light"><tr><th>Categoria</th><th class="text-end">Anterior</th><th class="text-end">Actual</th><th class="text-end">Cambio</th></tr></thead>
+                <tbody>@foreach(var c in Model.ComparacionCategorias.Take(8)){<tr><td><span class="category-icon-sm me-1" style="color:@c.Color;background:color-mix(in srgb,@c.Color 14%,transparent);"><i class="bi @c.Icono"></i></span>@c.Nombre</td><td class="text-end">@c.Anterior.ToString("C0")</td><td class="text-end">@c.Actual.ToString("C0")</td><td class="text-end fw-bold @(c.Diferencia<=0?"text-success":"text-danger")">@(c.Diferencia>=0?"+":"")@c.Porcentaje%</td></tr>}</tbody>
+            </table></div></div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-bullseye"></i> Presupuestos del mes</div>
+            <div class="card-body">
+                @if (!Model.Presupuestos.Any())
+                {
+                    <p class="text-muted">No has definido presupuestos. <a asp-controller="Presupuestos" asp-action="Index">Crear uno</a>.</p>
+                }
+                @foreach (var p in Model.Presupuestos)
+                {
+                    var pct = p.MontoMensual > 0 ? Math.Min(100, (int)(p.Gastado * 100 / p.MontoMensual)) : 0;
+                    var colorBarra = pct >= 100 ? "bg-danger" : pct >= 80 ? "bg-warning" : "bg-success";
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small">
+                            <span><span class="category-icon-sm me-1" style="color:@p.CategoriaColor;background:color-mix(in srgb,@p.CategoriaColor 14%,transparent);"><i class="bi @p.CategoriaIcono"></i></span>@p.CategoriaNombre</span>
+                            <span>@p.Gastado.ToString("C0") / @p.MontoMensual.ToString("C0")</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            <div class="progress-bar @colorBarra" style="width:@pct%;"></div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-bank"></i> Mis cuentas</div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    @foreach (var c in Model.Cuentas)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>
+                                <span class="entity-icon me-2"><i class="bi @c.Icono"></i></span>
+                                @c.Nombre <span class="text-muted small">(@c.TipoTexto)</span>
+                            </span>
+                            @if (c.Tipo == "tarjeta_credito")
+                            {
+                                <span class="fw-bold @(c.Saldo > 0 ? "text-danger" : "text-success")">
+                                    @(c.Saldo > 0 ? "Debe " + c.Saldo.ToString("C0") : "Al dia")
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="fw-bold">@c.Saldo.ToString("C0")</span>
+                            }
+                        </li>
+                    }
+                    @if (!Model.Cuentas.Any())
+                    {
+                        <li class="list-group-item text-muted">No tienes cuentas. <a asp-controller="Cuentas" asp-action="Index">Crear la primera</a>.</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const tc = themeColors();
+    const categorias = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.GastosPorCategoria.Select(x => new { nombre = x.Nombre, color = x.Color, icono = x.Icono, total = x.Total })));
+    if (categorias.length > 0) {
+        new Chart(document.getElementById('graficaCategorias'), {
+            type: 'doughnut',
+            data: {
+                labels: categorias.map(c => c.nombre),
+                datasets: [{ data: categorias.map(c => c.total), backgroundColor: categorias.map(c => c.color) }]
+            },
+            options: {
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ' $ ' + ctx.parsed.toLocaleString('es-CO') } }
+                }
+            }
+        });
+    }
+
+    const serie = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.SerieMensual.Select(x => new { etiqueta = x.Etiqueta, ingresos = x.Ingresos, gastos = x.Gastos })));
+    new Chart(document.getElementById('graficaEvolucion'), {
+        type: 'bar',
+        data: {
+            labels: serie.map(s => s.etiqueta),
+            datasets: [
+                { label: 'Ingresos', data: serie.map(s => s.ingresos), backgroundColor: tc.gold },
+                { label: 'Gastos', data: serie.map(s => s.gastos), backgroundColor: tc.purple }
+            ]
+        },
+        options: {
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': $ ' + ctx.parsed.y.toLocaleString('es-CO') } }
+            },
+            scales: { y: { ticks: { callback: v => '$ ' + v.toLocaleString('es-CO') } } }
+        }
+    });
+
+    const flujo = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.FlujoDiario.Select(x => new { dia=x.Dia, balance=x.Balance })));
+    new Chart(document.getElementById('graficaFlujo'), {
+        type:'line', data:{labels:flujo.map(x=>'Dia '+x.dia),datasets:[{label:'Balance acumulado',data:flujo.map(x=>x.balance),borderColor:tc.purple,backgroundColor:'rgba(124,58,237,.15)',fill:true,tension:.3}]},
+        options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}
+    });
+    new Chart(document.getElementById('graficaClases'), {
+        type:'doughnut',data:{labels:['Fijos','Variables y periodicos'],datasets:[{data:[@Model.GastosFijos,@Model.GastosVariables],backgroundColor:[tc.purple,tc.gold]}]},
+        options:{plugins:{legend:{position:'bottom'}}}
+    });
+</script>
+}

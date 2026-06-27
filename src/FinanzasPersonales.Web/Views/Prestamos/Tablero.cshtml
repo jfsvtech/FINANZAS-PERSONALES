@@ -1,0 +1,215 @@
+@model PrestamosTableroVm
+@{
+    ViewBag.Titulo = "Tablero de prestamos - Finanzas Personales";
+    var hoy = DateTime.Today;
+    var inicioAnio = new DateTime(hoy.Year, 1, 1);
+    var inicioTresMeses = hoy.AddMonths(-3).Date;
+    var inicioDoceMeses = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-11);
+    string F(DateTime fecha) => fecha.ToString("yyyy-MM-dd");
+    var tituloCobros = Model.FiltroDesde.HasValue || Model.FiltroHasta.HasValue
+        ? $"Cobros del {Model.FiltroDesde?.ToString("dd MMM yyyy") ?? "inicio"} al {Model.FiltroHasta?.ToString("dd MMM yyyy") ?? "hoy"}"
+        : "Cobros de los ultimos 12 meses";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h4 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Tablero de prestamos</h4>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary btn-sm" asp-controller="Personas" asp-action="Index"><i class="bi bi-person-rolodex"></i> Personas</a>
+        <a class="btn btn-primary btn-sm" asp-action="Index"><i class="bi bi-cash-stack"></i> Ver prestamos</a>
+    </div>
+</div>
+
+<form method="get" class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <div class="d-flex gap-1 flex-wrap mb-2">
+            <span class="text-muted small me-1 align-self-center"><i class="bi bi-lightning"></i> Rapido:</span>
+            <a class="btn btn-sm btn-outline-primary" asp-action="Tablero" asp-route-desde="@F(inicioTresMeses)" asp-route-hasta="@F(hoy)"
+               asp-route-personaId="@Model.FiltroPersonaId">Ultimos 3 meses</a>
+            <a class="btn btn-sm btn-outline-primary" asp-action="Tablero" asp-route-desde="@F(inicioAnio)" asp-route-hasta="@F(hoy)"
+               asp-route-personaId="@Model.FiltroPersonaId">Este a&ntilde;o</a>
+            <a class="btn btn-sm btn-outline-primary" asp-action="Tablero" asp-route-desde="@F(inicioDoceMeses)" asp-route-hasta="@F(hoy)"
+               asp-route-personaId="@Model.FiltroPersonaId">Ultimos 12 meses</a>
+            <a class="btn btn-sm btn-outline-secondary" asp-action="Tablero" asp-route-personaId="@Model.FiltroPersonaId">Limpiar fechas</a>
+        </div>
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Persona</label>
+                <select name="personaId" class="form-select form-select-sm">
+                    <option value="">Todas</option>
+                    @foreach (var pe in Model.Personas)
+                    {
+                        if (Model.FiltroPersonaId == pe.Id) { <option value="@pe.Id" selected>@pe.Nombre</option> }
+                        else { <option value="@pe.Id">@pe.Nombre</option> }
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Cobros desde</label>
+                <input type="date" name="desde" class="form-control form-control-sm" value="@(Model.FiltroDesde?.ToString("yyyy-MM-dd"))" />
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Cobros hasta</label>
+                <input type="date" name="hasta" class="form-control form-control-sm" value="@(Model.FiltroHasta?.ToString("yyyy-MM-dd"))" />
+            </div>
+            <div class="col-6 col-md-2">
+                <button class="btn btn-outline-primary btn-sm w-100" type="submit"><i class="bi bi-funnel"></i> Filtrar</button>
+            </div>
+            <div class="col-6 col-md-1">
+                <a class="btn btn-outline-secondary btn-sm w-100" asp-action="Tablero" title="Limpiar filtros"><i class="bi bi-x-lg"></i></a>
+            </div>
+            <div class="col-12 col-md-2 text-md-end small text-muted">
+                @if (Model.FiltroDesde.HasValue || Model.FiltroHasta.HasValue)
+                {
+                    <div>Periodo: @Model.InteresCobradoPeriodo.ToString("C0") interes</div>
+                    <div>@Model.CapitalRecuperadoPeriodo.ToString("C0") capital</div>
+                }
+                else
+                {
+                    <span>Grafica: ultimos 12 meses</span>
+                }
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="row g-2 mb-3 text-center">
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Prestamos activos</div>
+        <div class="fw-bold fs-5">@Model.CantidadActivos</div>
+        <div class="text-muted" style="font-size:.75rem;">@Model.CantidadPagados pagados</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Capital prestado</div>
+        <div class="fw-bold">@Model.TotalPrestadoActivo.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Saldo por cobrar</div>
+        <div class="fw-bold text-primary">@Model.TotalSaldoCapital.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Interes pendiente</div>
+        <div class="fw-bold @(Model.TotalInteresPendiente > 0 ? "text-warning" : "text-success")">@Model.TotalInteresPendiente.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Interes mensual esperado</div>
+        <div class="fw-bold text-success">@Model.InteresMensualEsperado.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Interes cobrado historico</div>
+        <div class="fw-bold text-success">@Model.TotalInteresCobrado.ToString("C0")</div>
+    </div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-pie-chart"></i> Saldo por cobrar por persona</div>
+            <div class="card-body">
+                @if (Model.SaldoPorPersona.Any())
+                {
+                    <canvas id="graficaPersonas" style="max-height:300px;"></canvas>
+                }
+                else
+                {
+                    <p class="text-muted text-center my-5">No hay prestamos activos con saldo.</p>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-bar-chart"></i> @tituloCobros</div>
+            <div class="card-body">
+                <canvas id="graficaCobros" style="max-height:300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white fw-bold"><i class="bi bi-list-check"></i> Estado de los prestamos activos</div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Persona</th><th class="text-end">Saldo capital</th>
+                    <th class="d-none d-md-table-cell text-end">Interes mensual</th>
+                    <th class="text-end">Interes pendiente</th>
+                    <th class="d-none d-md-table-cell">Dia pago interes</th>
+                    <th class="d-none d-md-table-cell">Capital pactado</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var p in Model.Activos.OrderByDescending(x => x.InteresPendiente))
+            {
+                var capitalVencido = p.FechaPagoCapital.HasValue && p.FechaPagoCapital.Value.Date < hoy;
+                var interesAtrasado = p.InteresPendiente >= p.InteresMensualActual && p.InteresMensualActual > 0;
+                <tr class="@(interesAtrasado || capitalVencido ? "table-warning" : "")">
+                    <td>
+                        <i class="bi bi-person-circle me-1"></i> @p.PersonaNombre
+                        @if (interesAtrasado) { <span class="badge text-bg-danger">Interes atrasado</span> }
+                        @if (capitalVencido) { <span class="badge text-bg-danger">Capital vencido</span> }
+                    </td>
+                    <td class="text-end fw-bold">@p.SaldoCapital.ToString("C0")</td>
+                    <td class="d-none d-md-table-cell text-end">@p.InteresMensualActual.ToString("C0") <span class="text-muted small">(@p.TasaMensual.ToString("0.##")%)</span></td>
+                    <td class="text-end fw-bold @(p.InteresPendiente > 0 ? "text-warning" : "text-success")">@p.InteresPendiente.ToString("C0")</td>
+                    <td class="d-none d-md-table-cell">@(p.DiaPagoInteres.HasValue ? "Dia " + p.DiaPagoInteres : "-")</td>
+                    <td class="d-none d-md-table-cell @(capitalVencido ? "text-danger fw-bold" : "")">
+                        @(p.FechaPagoCapital?.ToString("dd MMM yyyy") ?? "-")
+                    </td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-primary" asp-action="Detalle" asp-route-id="@p.Id"><i class="bi bi-clipboard-data"></i> Control</a>
+                    </td>
+                </tr>
+            }
+            @if (!Model.Activos.Any())
+            {
+                <tr><td colspan="7" class="text-center text-muted py-4">No tienes prestamos activos.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const tc = themeColors();
+    const porPersona = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.SaldoPorPersona.Select(x => new { nombre = x.Nombre, color = x.Color, total = x.Total })));
+    if (porPersona.length > 0) {
+        new Chart(document.getElementById('graficaPersonas'), {
+            type: 'doughnut',
+            data: {
+                labels: porPersona.map(x => x.nombre),
+                datasets: [{ data: porPersona.map(x => x.total), backgroundColor: porPersona.map(x => x.color) }]
+            },
+            options: {
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: { callbacks: { label: ctx => ' $ ' + ctx.parsed.toLocaleString('es-CO') } }
+                }
+            }
+        });
+    }
+
+    const cobros = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.CobrosPorMes.Select(x => new { etiqueta = x.Etiqueta, intereses = x.Intereses, capital = x.Capital })));
+    new Chart(document.getElementById('graficaCobros'), {
+        type: 'bar',
+        data: {
+            labels: cobros.map(x => x.etiqueta),
+            datasets: [
+                { label: 'Intereses cobrados', data: cobros.map(x => x.intereses), backgroundColor: tc.gold },
+                { label: 'Capital recuperado', data: cobros.map(x => x.capital), backgroundColor: tc.purple }
+            ]
+        },
+        options: {
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': $ ' + ctx.parsed.y.toLocaleString('es-CO') } }
+            },
+            scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: v => '$ ' + v.toLocaleString('es-CO') } } }
+        }
+    });
+</script>
+}

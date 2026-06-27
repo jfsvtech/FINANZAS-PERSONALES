@@ -1,0 +1,68 @@
+@model List<Presupuesto>
+@{
+    ViewBag.Titulo = "Presupuestos - Finanzas Personales";
+    var categoriasGasto = (List<Categoria>)ViewBag.CategoriasGasto;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-bullseye"></i> Presupuestos mensuales</h4>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-bold">Definir presupuesto</div>
+            <form class="card-body" method="post" asp-action="Guardar">
+                @Html.AntiForgeryToken()
+                <div class="mb-3">
+                    <label class="form-label">Categoria de gasto</label>
+                    <select name="categoriaId" class="form-select" required>
+                        @foreach (var c in categoriasGasto)
+                        {
+                            <option value="@c.Id">@c.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tope mensual</label>
+                    <input type="number" name="montoMensual" class="form-control" min="1" step="1" inputmode="numeric" required placeholder="Ej: 800000" />
+                </div>
+                <button class="btn btn-primary w-100"><i class="bi bi-check-lg"></i> Guardar</button>
+                <div class="form-text mt-2">Si la categoria ya tiene presupuesto, se actualiza el monto.</div>
+            </form>
+        </div>
+    </div>
+    <div class="col-12 col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-bold">Avance del mes actual</div>
+            <div class="card-body">
+                @if (!Model.Any())
+                {
+                    <p class="text-muted">Aun no tienes presupuestos definidos.</p>
+                }
+                @foreach (var p in Model)
+                {
+                    var pct = p.MontoMensual > 0 ? (int)(p.Gastado * 100 / p.MontoMensual) : 0;
+                    var pctBarra = Math.Min(100, pct);
+                    var colorBarra = pct >= 100 ? "bg-danger" : pct >= 80 ? "bg-warning" : "bg-success";
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center small mb-1">
+                            <span><span class="category-icon-sm me-1" style="color:@p.CategoriaColor;background:color-mix(in srgb,@p.CategoriaColor 14%,transparent);"><i class="bi @p.CategoriaIcono"></i></span><strong>@p.CategoriaNombre</strong></span>
+                            <span>
+                                @p.Gastado.ToString("C0") / @p.MontoMensual.ToString("C0") (@pct%)
+                                <form class="d-inline ms-2" method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar este presupuesto?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@p.Id" />
+                                    <button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </span>
+                        </div>
+                        <div class="progress" style="height: 12px;">
+                            <div class="progress-bar @colorBarra" style="width:@pctBarra%;"></div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

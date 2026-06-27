@@ -1,0 +1,232 @@
+@model List<GastoPeriodico>
+@{
+    ViewBag.Titulo = "Recurrentes - Finanzas Personales";
+    var categoriasGasto = (List<Categoria>)ViewBag.CategoriasGasto;
+    var categoriasIngreso = (List<Categoria>)ViewBag.CategoriasIngreso;
+    var cuentas = (List<Cuenta>)ViewBag.Cuentas;
+    var hoy = DateTime.Today;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-arrow-repeat"></i> Movimientos recurrentes</h4>
+    <button class="btn btn-success btn-sm" onclick="abrirNuevo()"><i class="bi bi-plus-lg"></i> Nuevo</button>
+</div>
+
+<p class="text-muted small">Gastos e ingresos que se repiten cada cierto tiempo: arriendos recibidos, nomina, seguros, impuestos, matriculas...
+Cuando llegue la fecha, usa <strong>Registrar</strong>: se crea el movimiento real y la proxima fecha se reprograma sola.</p>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Nombre</th><th class="d-none d-md-table-cell">Categoria</th><th>Frecuencia</th><th>Proxima fecha</th><th class="text-end">Monto est.</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var g in Model)
+            {
+                var vencido = g.Activo && g.ProximaFecha <= hoy;
+                var esIngreso = g.Tipo == "ingreso";
+                <tr class="@(!g.Activo ? "table-secondary text-muted" : vencido ? "table-warning" : "")">
+                    <td>
+                        <span class="badge @(esIngreso ? "text-bg-success" : "text-bg-danger") me-1">@(esIngreso ? "Ingreso" : "Gasto")</span>
+                        @g.Nombre @if (vencido) { <span class="badge text-bg-warning">Pendiente</span> }
+                    </td>
+                    <td class="d-none d-md-table-cell"><span class="category-icon-sm me-1"><i class="bi @g.CategoriaIcono"></i></span>@g.CategoriaNombre</td>
+                    <td>@(g.FrecuenciaMeses == 1 ? "Mensual" : $"Cada {g.FrecuenciaMeses} meses")</td>
+                    <td>@g.ProximaFecha.ToString("dd MMM yyyy")</td>
+                    <td class="text-end fw-bold">@g.MontoEstimado.ToString("C0")</td>
+                    <td class="text-end text-nowrap">
+                        @if (g.Activo)
+                        {
+                            <button class="btn btn-sm btn-primary" title="Registrar el gasto real"
+                                    onclick='abrirRegistrar(@System.Text.Json.JsonSerializer.Serialize(new { id = g.Id, tipo = g.Tipo, nombre = g.Nombre, monto = g.MontoEstimado, cuentaId = g.CuentaId }))'>
+                                <i class="bi bi-check2-circle"></i> Registrar
+                            </button>
+                        }
+                        <button class="btn btn-sm btn-outline-secondary"
+                                onclick='abrirEditar(@System.Text.Json.JsonSerializer.Serialize(new {
+                                    id = g.Id, tipo = g.Tipo, nombre = g.Nombre, categoriaId = g.CategoriaId, cuentaId = g.CuentaId,
+                                    monto = g.MontoEstimado, frecuencia = g.FrecuenciaMeses,
+                                    proximaFecha = g.ProximaFecha.ToString("yyyy-MM-dd"), activo = g.Activo }))'>
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <form class="d-inline" method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar @g.Nombre?');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@g.Id" />
+                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            @if (!Model.Any())
+            {
+                <tr><td colspan="6" class="text-center text-muted py-4">No tienes movimientos recurrentes configurados.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalPeriodico" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="gpId" value="0" />
+            <div class="modal-header">
+                <h5 class="modal-title" id="gpTitulo">Nuevo gasto periodico</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tipo</label>
+                    <select name="tipo" id="gpTipo" class="form-select" required onchange="actualizarCategorias()">
+                        <option value="gasto">Gasto recurrente</option>
+                        <option value="ingreso">Ingreso recurrente</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre</label>
+                    <input name="nombre" id="gpNombre" class="form-control" maxlength="100" required placeholder="Ej: Seguro del carro o alquiler recibido" />
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Categoria</label>
+                        <select name="categoriaId" id="gpCategoria" class="form-select" required>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Cuenta habitual (opcional)</label>
+                        <select name="cuentaId" id="gpCuenta" class="form-select">
+                            <option value="">-- Ninguna --</option>
+                            @foreach (var c in cuentas) { <option value="@c.Id">@c.Nombre</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-4">
+                        <label class="form-label">Monto estimado</label>
+                        <input type="number" name="montoEstimado" id="gpMonto" class="form-control" min="1" step="0.01" inputmode="decimal" required />
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label">Cada (meses)</label>
+                        <input type="number" name="frecuenciaMeses" id="gpFrecuencia" class="form-control" min="1" max="60" value="1" required />
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label">Proxima fecha</label>
+                        <input type="date" name="proximaFecha" id="gpProximaFecha" class="form-control" required />
+                    </div>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" name="activo" id="gpActivo" value="true" checked />
+                    <label class="form-check-label" for="gpActivo">Activo</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="modalRegistrar" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-action="Registrar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="rgId" />
+            <div class="modal-header">
+                <h5 class="modal-title" id="rgTitulo">Registrar gasto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Fecha del pago</label>
+                        <input type="date" name="fecha" id="rgFecha" class="form-control" required />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Monto real</label>
+                        <input type="number" name="monto" id="rgMonto" class="form-control" min="1" step="0.01" inputmode="decimal" required />
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Medio de pago</label>
+                    <select name="cuentaId" id="rgCuenta" class="form-select" required>
+                        @foreach (var c in cuentas) { <option value="@c.Id">@c.Nombre@(c.Tipo == "tarjeta_credito" ? " (TC)" : "")</option> }
+                    </select>
+                </div>
+                <div class="form-text" id="rgAyuda">Se creara el movimiento y la proxima fecha se reprogramara automaticamente.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="rgBoton">Registrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const modalP = new bootstrap.Modal(document.getElementById('modalPeriodico'));
+    const modalR = new bootstrap.Modal(document.getElementById('modalRegistrar'));
+    const categoriasPorTipo = {
+        gasto: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(categoriasGasto.Select(c => new { id = c.Id, nombre = c.Nombre }))),
+        ingreso: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(categoriasIngreso.Select(c => new { id = c.Id, nombre = c.Nombre })))
+    };
+
+    function actualizarCategorias(valorSeleccionado) {
+        const tipo = document.getElementById('gpTipo').value || 'gasto';
+        const select = document.getElementById('gpCategoria');
+        const categorias = categoriasPorTipo[tipo] || [];
+        select.innerHTML = categorias.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+        if (valorSeleccionado) select.value = valorSeleccionado;
+    }
+
+    function abrirNuevo() {
+        document.getElementById('gpId').value = 0;
+        document.getElementById('gpTipo').value = 'gasto';
+        actualizarCategorias();
+        document.getElementById('gpTitulo').textContent = 'Nuevo movimiento recurrente';
+        document.getElementById('gpNombre').value = '';
+        document.getElementById('gpMonto').value = '';
+        document.getElementById('gpFrecuencia').value = 1;
+        document.getElementById('gpProximaFecha').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('gpCuenta').value = '';
+        document.getElementById('gpActivo').checked = true;
+        modalP.show();
+    }
+    function abrirEditar(g) {
+        document.getElementById('gpId').value = g.id;
+        document.getElementById('gpTipo').value = g.tipo || 'gasto';
+        actualizarCategorias(g.categoriaId);
+        document.getElementById('gpTitulo').textContent = 'Editar movimiento recurrente';
+        document.getElementById('gpNombre').value = g.nombre;
+        document.getElementById('gpCuenta').value = g.cuentaId || '';
+        document.getElementById('gpMonto').value = g.monto;
+        document.getElementById('gpFrecuencia').value = g.frecuencia;
+        document.getElementById('gpProximaFecha').value = g.proximaFecha;
+        document.getElementById('gpActivo').checked = g.activo;
+        modalP.show();
+    }
+    function abrirRegistrar(g) {
+        document.getElementById('rgId').value = g.id;
+        document.getElementById('rgTitulo').textContent = 'Registrar: ' + g.nombre;
+        document.getElementById('rgBoton').textContent = g.tipo === 'ingreso' ? 'Registrar ingreso' : 'Registrar gasto';
+        document.getElementById('rgAyuda').textContent = g.tipo === 'ingreso'
+            ? 'Se creara el ingreso real y la proxima fecha se reprogramara automaticamente.'
+            : 'Se creara el gasto real y la proxima fecha se reprogramara automaticamente.';
+        document.getElementById('rgFecha').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('rgMonto').value = g.monto;
+        if (g.cuentaId) document.getElementById('rgCuenta').value = g.cuentaId;
+        modalR.show();
+    }
+    const periodicosCalendario = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.Select(g => new { id=g.Id,tipo=g.Tipo,nombre=g.Nombre,monto=g.MontoEstimado,cuentaId=g.CuentaId })));
+    const registrarId = parseInt(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["registrar"].ToString()))) || 0;
+    if (registrarId) {
+        const pendiente = periodicosCalendario.find(x => x.id === registrarId);
+        if (pendiente) abrirRegistrar(pendiente);
+    }
+    actualizarCategorias();
+</script>
+}

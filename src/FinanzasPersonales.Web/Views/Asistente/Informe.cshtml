@@ -1,0 +1,26 @@
+@model InformeMensualVm
+@{
+    ViewBag.Titulo = "Informe mensual";
+    var fecha = new DateTime(Model.Anio, Model.Mes, 1);
+    var anterior = fecha.AddMonths(-1);
+    var siguiente = fecha.AddMonths(1);
+}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3 no-print">
+    <div><span class="page-eyebrow">Cierre financiero</span><h3 class="mb-1"><i class="bi bi-file-earmark-bar-graph text-warning"></i> Informe mensual</h3><p class="text-muted mb-0 text-capitalize">@Model.Periodo</p></div>
+    <div class="d-flex gap-2"><a class="btn btn-outline-primary" asp-route-anio="@anterior.Year" asp-route-mes="@anterior.Month"><i class="bi bi-chevron-left"></i></a><button class="btn btn-premium" onclick="window.print()"><i class="bi bi-printer"></i> Imprimir / PDF</button><a class="btn btn-outline-primary" asp-route-anio="@siguiente.Year" asp-route-mes="@siguiente.Month"><i class="bi bi-chevron-right"></i></a></div>
+</div>
+<div class="report-cover"><span>Informe financiero mensual</span><h2 class="text-capitalize">@Model.Periodo</h2><p>Resumen automático de resultados, tendencias y oportunidades.</p></div>
+<div class="row g-3 my-1">
+    <div class="col-6 col-lg-3"><div class="mini-stat"><span>Ingresos</span><strong class="text-success">@Model.Ingresos.ToString("C0")</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="mini-stat"><span>Gastos</span><strong class="text-danger">@Model.Gastos.ToString("C0")</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="mini-stat"><span>Resultado</span><strong class="@(Model.Balance>=0?"text-success":"text-danger")">@Model.Balance.ToString("C0")</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="mini-stat"><span>Tasa de ahorro</span><strong>@Model.TasaAhorro%</strong></div></div>
+</div>
+<div class="row g-3">
+    <div class="col-12 col-lg-7"><div class="card h-100"><div class="card-header fw-bold">Distribución del gasto</div><div class="card-body"><canvas id="informeCategorias"></canvas></div></div></div>
+    <div class="col-12 col-lg-5"><div class="card h-100"><div class="card-header fw-bold">Hallazgos del mes</div><div class="card-body">@foreach(var r in Model.Recomendaciones){<div class="insight-card insight-@r.Tipo"><span class="category-icon-sm"><i class="bi @r.Icono"></i></span><span><strong>@r.Titulo</strong><small>@r.Detalle</small></span></div>}</div></div></div>
+</div>
+@section Scripts {<script>
+const ic=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Categorias.Select(x=>new{nombre=x.Nombre,total=x.Total,color=x.Color})));
+new Chart(document.getElementById('informeCategorias'),{type:'bar',data:{labels:ic.map(x=>x.nombre),datasets:[{label:'Gasto',data:ic.map(x=>x.total),backgroundColor:ic.map(x=>x.color)}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}});
+</script>}

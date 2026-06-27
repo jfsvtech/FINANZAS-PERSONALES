@@ -1,0 +1,211 @@
+@model List<Categoria>
+@{
+    ViewBag.Titulo = "Categorias - Finanzas Personales";
+    var activas = Model.Count(x => x.Activo);
+    var gastos = Model.Count(x => x.Activo && x.Tipo == "gasto");
+    var ingresos = Model.Count(x => x.Activo && x.Tipo == "ingreso");
+}
+
+<div class="page-heading d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
+    <div>
+        <span class="page-eyebrow">Mi configuracion</span>
+        <h3 class="mb-1"><i class="bi bi-tags text-primary"></i> Mis categorias</h3>
+        <p class="text-muted mb-0">Son personales. Solo tú puedes verlas y usarlas en tus movimientos.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <form method="post" asp-action="CrearSugeridas">
+            @Html.AntiForgeryToken()
+            <button class="btn btn-outline-primary btn-sm"><i class="bi bi-magic"></i> Agregar sugeridas</button>
+        </form>
+        <button class="btn btn-success btn-sm" onclick="abrirNueva()"><i class="bi bi-plus-lg"></i> Nueva categoria</button>
+    </div>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-4"><div class="mini-stat"><span>Activas</span><strong>@activas</strong></div></div>
+    <div class="col-4"><div class="mini-stat mini-stat-danger"><span>Gastos</span><strong>@gastos</strong></div></div>
+    <div class="col-4"><div class="mini-stat mini-stat-success"><span>Ingresos</span><strong>@ingresos</strong></div></div>
+</div>
+
+<div class="d-flex gap-2 mb-3 flex-wrap" id="filtrosCategorias">
+    <button type="button" class="btn btn-primary btn-sm" data-filtro="todas">Todas</button>
+    <button type="button" class="btn btn-outline-danger btn-sm" data-filtro="gasto">Gastos</button>
+    <button type="button" class="btn btn-outline-success btn-sm" data-filtro="ingreso">Ingresos</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-filtro="inactiva">Inactivas</button>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Nombre</th><th>Tipo</th><th class="d-none d-md-table-cell">Clase</th><th>Estado</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var c in Model)
+            {
+                <tr class="fila-categoria @(c.Activo ? "" : "table-secondary text-muted")"
+                    data-tipo="@c.Tipo" data-activa="@c.Activo.ToString().ToLowerInvariant()">
+                    <td><span class="entity-icon me-1" style="color:@c.Color;background:color-mix(in srgb,@c.Color 14%,transparent);"><i class="bi @c.Icono"></i></span> @c.Nombre</td>
+                    <td>
+                        @if (c.Tipo == "ingreso") { <span class="badge text-bg-success">Ingreso</span> }
+                        else { <span class="badge text-bg-danger">Gasto</span> }
+                    </td>
+                    <td class="d-none d-md-table-cell text-capitalize">@c.Clase</td>
+                    <td>@(c.Activo ? "Activa" : "Inactiva")</td>
+                    <td class="text-end text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary"
+                                onclick='abrirEditar(@System.Text.Json.JsonSerializer.Serialize(new { id = c.Id, nombre = c.Nombre, tipo = c.Tipo, clase = c.Clase, color = c.Color, icono = c.Icono, activo = c.Activo }))'>
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <form class="d-inline" method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar la categoria @c.Nombre?');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@c.Id" />
+                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            @if (!Model.Any())
+            {
+                <tr><td colspan="5" class="text-center py-5">
+                    <i class="bi bi-tags text-muted fs-2 d-block mb-2"></i>
+                    <strong>Aun no tienes categorias</strong>
+                    <div class="text-muted small mb-3">Crea las que representen tu forma de organizar el dinero.</div>
+                    <button class="btn btn-success btn-sm" onclick="abrirNueva()"><i class="bi bi-plus-lg"></i> Crear primera categoria</button>
+                </td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalCategoria" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="caId" value="0" />
+            <div class="modal-header">
+                <h5 class="modal-title" id="caTitulo">Nueva categoria</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nombre</label>
+                    <input name="nombre" id="caNombre" class="form-control" maxlength="80" required />
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Tipo</label>
+                        <select name="tipo" id="caTipo" class="form-select">
+                            <option value="gasto">Gasto</option>
+                            <option value="ingreso">Ingreso</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Clase</label>
+                        <select name="clase" id="caClase" class="form-select">
+                            <option value="fijo">Fijo (mensual)</option>
+                            <option value="variable" selected>Variable</option>
+                            <option value="periodico">Periodico</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-text mb-3" id="ayudaClase">La clase ayuda a organizar y analizar tus gastos.</div>
+                <div class="mb-3">
+                    <label class="form-label">Icono</label>
+                    <input type="hidden" name="icono" id="caIcono" value="bi-tag" />
+                    <div class="icon-picker" data-target="caIcono">
+                        @foreach (var icono in new[] { "bi-house", "bi-cart", "bi-car-front", "bi-heart-pulse", "bi-cup-hot", "bi-controller", "bi-book", "bi-lightning", "bi-phone", "bi-airplane", "bi-gift", "bi-tag", "bi-briefcase", "bi-cash-stack" })
+                        {
+                            <button type="button" class="icon-option" data-icon="@icono" title="@icono"><i class="bi @icono"></i></button>
+                        }
+                    </div>
+                </div>
+                <div class="row g-2 mb-3 align-items-center">
+                    <div class="col-6">
+                        <label class="form-label">Color</label>
+                        <input type="color" name="color" id="caColor" class="form-control form-control-color w-100" value="#6c757d" />
+                    </div>
+                    <div class="col-6">
+                        <div class="form-check mt-4">
+                            <input type="checkbox" class="form-check-input" name="activo" id="caActivo" value="true" checked />
+                            <label class="form-check-label" for="caActivo">Activa</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const modal = new bootstrap.Modal(document.getElementById('modalCategoria'));
+
+    function actualizarTipo() {
+        const esIngreso = document.getElementById('caTipo').value === 'ingreso';
+        const clase = document.getElementById('caClase');
+        if (esIngreso) clase.value = 'variable';
+        clase.style.pointerEvents = esIngreso ? 'none' : '';
+        clase.classList.toggle('bg-light', esIngreso);
+        document.getElementById('ayudaClase').textContent = esIngreso
+            ? 'Las categorias de ingreso no necesitan clase.'
+            : 'La clase ayuda a organizar y analizar tus gastos.';
+    }
+    function seleccionarIconoCategoria(icono) {
+        document.getElementById('caIcono').value = icono || 'bi-tag';
+        document.querySelectorAll('[data-target="caIcono"] .icon-option').forEach(x =>
+            x.classList.toggle('selected', x.dataset.icon === document.getElementById('caIcono').value));
+    }
+
+    function abrirNueva() {
+        document.getElementById('caId').value = 0;
+        document.getElementById('caTitulo').textContent = 'Nueva categoria';
+        document.getElementById('caNombre').value = '';
+        document.getElementById('caTipo').value = 'gasto';
+        document.getElementById('caClase').value = 'variable';
+        document.getElementById('caColor').value = '#6c757d';
+        document.getElementById('caActivo').checked = true;
+        seleccionarIconoCategoria('bi-tag');
+        actualizarTipo();
+        modal.show();
+    }
+    function abrirEditar(c) {
+        document.getElementById('caId').value = c.id;
+        document.getElementById('caTitulo').textContent = 'Editar categoria';
+        document.getElementById('caNombre').value = c.nombre;
+        document.getElementById('caTipo').value = c.tipo;
+        document.getElementById('caClase').value = c.clase;
+        document.getElementById('caColor').value = c.color;
+        document.getElementById('caActivo').checked = c.activo;
+        seleccionarIconoCategoria(c.icono);
+        actualizarTipo();
+        modal.show();
+    }
+
+    document.getElementById('caTipo').addEventListener('change', actualizarTipo);
+    document.querySelectorAll('[data-target="caIcono"] .icon-option').forEach(x =>
+        x.addEventListener('click', () => seleccionarIconoCategoria(x.dataset.icon)));
+
+    document.querySelectorAll('#filtrosCategorias button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const filtro = btn.dataset.filtro;
+            document.querySelectorAll('.fila-categoria').forEach(fila => {
+                fila.classList.toggle('d-none',
+                    filtro === 'gasto' ? fila.dataset.tipo !== 'gasto' :
+                    filtro === 'ingreso' ? fila.dataset.tipo !== 'ingreso' :
+                    filtro === 'inactiva' ? fila.dataset.activa !== 'false' : false);
+            });
+            document.querySelectorAll('#filtrosCategorias button').forEach(x => {
+                x.classList.toggle('btn-primary', x === btn);
+                x.classList.toggle('btn-outline-primary', x !== btn);
+                x.classList.remove('btn-outline-danger', 'btn-outline-success', 'btn-outline-secondary');
+            });
+        });
+    });
+</script>
+}

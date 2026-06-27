@@ -1,0 +1,147 @@
+@model List<Cuenta>
+@{
+    ViewBag.Titulo = "Cuentas - Finanzas Personales";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-bank"></i> Cuentas y medios de pago</h4>
+    <button class="btn btn-success btn-sm" onclick="abrirNueva()"><i class="bi bi-plus-lg"></i> Nueva cuenta</button>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Nombre</th><th>Tipo</th><th class="text-end">Saldo / Deuda</th><th class="d-none d-md-table-cell">Dia de pago</th><th>Estado</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var c in Model)
+            {
+                <tr class="@(c.Activo ? "" : "table-secondary text-muted")">
+                    <td>
+                        <span class="entity-icon"><i class="bi @c.Icono"></i></span>
+                        @c.Nombre
+                    </td>
+                    <td>@c.TipoTexto</td>
+                    <td class="text-end fw-bold">
+                        @if (c.Tipo == "tarjeta_credito")
+                        {
+                            <span class="@(c.Saldo > 0 ? "text-danger" : "text-success")">@(c.Saldo > 0 ? "Debe " + c.Saldo.ToString("C0") : "Al dia")</span>
+                        }
+                        else
+                        {
+                            @c.Saldo.ToString("C0")
+                        }
+                    </td>
+                    <td class="d-none d-md-table-cell">@(c.DiaPago.HasValue ? "Dia " + c.DiaPago : "-")</td>
+                    <td>@(c.Activo ? "Activa" : "Inactiva")</td>
+                    <td class="text-end text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary"
+                                onclick='abrirEditar(@System.Text.Json.JsonSerializer.Serialize(new { id = c.Id, nombre = c.Nombre, tipo = c.Tipo, icono = c.Icono, diaPago = c.DiaPago, activo = c.Activo }))'>
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <form class="d-inline" method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar la cuenta @c.Nombre?');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@c.Id" />
+                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            @if (!Model.Any())
+            {
+                <tr><td colspan="6" class="text-center text-muted py-4">Crea tu primera cuenta: efectivo, debito o tarjeta de credito.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalCuenta" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="cuId" value="0" />
+            <div class="modal-header">
+                <h5 class="modal-title" id="cuTitulo">Nueva cuenta</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nombre</label>
+                    <input name="nombre" id="cuNombre" class="form-control" maxlength="80" required placeholder="Ej: Bancolombia, Efectivo, Visa..." />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tipo</label>
+                    <select name="tipo" id="cuTipo" class="form-select" onchange="cambioTipoCuenta()">
+                        <option value="efectivo">Efectivo</option>
+                        <option value="debito">Cuenta debito / ahorros</option>
+                        <option value="tarjeta_credito">Tarjeta de credito</option>
+                    </select>
+                </div>
+                <div class="mb-3 d-none" id="grupoDiaPago">
+                    <label class="form-label">Dia del mes en que sueles pagarla (opcional)</label>
+                    <input type="number" name="diaPago" id="cuDiaPago" class="form-control" min="1" max="31" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Icono</label>
+                    <input type="hidden" name="icono" id="cuIcono" value="bi-bank" />
+                    <div class="icon-picker" data-target="cuIcono">
+                        @foreach (var icono in new[] { "bi-bank", "bi-credit-card", "bi-cash-coin", "bi-wallet2", "bi-piggy-bank", "bi-safe", "bi-phone", "bi-building" })
+                        {
+                            <button type="button" class="icon-option" data-icon="@icono" title="@icono"><i class="bi @icono"></i></button>
+                        }
+                    </div>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" name="activo" id="cuActivo" value="true" checked />
+                    <label class="form-check-label" for="cuActivo">Activa</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const modal = new bootstrap.Modal(document.getElementById('modalCuenta'));
+
+    function cambioTipoCuenta() {
+        const esTarjeta = document.getElementById('cuTipo').value === 'tarjeta_credito';
+        document.getElementById('grupoDiaPago').classList.toggle('d-none', !esTarjeta);
+    }
+    function seleccionarIconoCuenta(icono) {
+        document.getElementById('cuIcono').value = icono || 'bi-bank';
+        document.querySelectorAll('[data-target="cuIcono"] .icon-option').forEach(x =>
+            x.classList.toggle('selected', x.dataset.icon === document.getElementById('cuIcono').value));
+    }
+    function abrirNueva() {
+        document.getElementById('cuId').value = 0;
+        document.getElementById('cuTitulo').textContent = 'Nueva cuenta';
+        document.getElementById('cuNombre').value = '';
+        document.getElementById('cuTipo').value = 'debito';
+        document.getElementById('cuDiaPago').value = '';
+        document.getElementById('cuActivo').checked = true;
+        seleccionarIconoCuenta('bi-bank');
+        cambioTipoCuenta();
+        modal.show();
+    }
+    function abrirEditar(c) {
+        document.getElementById('cuId').value = c.id;
+        document.getElementById('cuTitulo').textContent = 'Editar cuenta';
+        document.getElementById('cuNombre').value = c.nombre;
+        document.getElementById('cuTipo').value = c.tipo;
+        document.getElementById('cuDiaPago').value = c.diaPago || '';
+        document.getElementById('cuActivo').checked = c.activo;
+        seleccionarIconoCuenta(c.icono);
+        cambioTipoCuenta();
+        modal.show();
+    }
+    document.querySelectorAll('[data-target="cuIcono"] .icon-option').forEach(x =>
+        x.addEventListener('click', () => seleccionarIconoCuenta(x.dataset.icon)));
+</script>
+}

@@ -1,0 +1,174 @@
+@model ConfiguracionIntegracionesVm
+@{
+    ViewBag.Titulo = "Integraciones de notificaciones";
+}
+
+<div class="page-heading mb-3">
+    <span class="page-eyebrow">Administracion</span>
+    <h3 class="mb-1"><i class="bi bi-plug text-warning"></i> Integraciones de notificaciones</h3>
+    <p class="text-muted mb-0">Configura desde aqui el correo que enviara verificaciones, recuperacion de contrasena, informes y recordatorios.</p>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-xl-7">
+        <div class="card h-100 integration-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <span class="integration-icon"><i class="bi bi-envelope"></i></span>
+                    <span class="badge @(Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.SmtpConfigurado ? "Configurado" : "Pendiente")</span>
+                </div>
+                <h5>Correo SMTP del sistema</h5>
+                <p class="text-muted small">Esta cuenta enviara correos automaticos de seguridad y notificaciones. La contrasena se guarda cifrada y no se muestra en pantalla.</p>
+                <div class="alert alert-info py-2 small">
+                    <strong>Gmail recomendado:</strong> servidor <code>smtp.gmail.com</code>, puerto <code>587</code>,
+                    SSL/TLS activo y <strong>contrasena de aplicacion</strong>. La contrasena normal de Gmail no funciona para SMTP.
+                </div>
+
+                <form method="post" asp-action="GuardarSmtp" class="row g-3">
+                    @Html.AntiForgeryToken()
+                    <div class="col-md-8">
+                        <label class="form-label">Servidor SMTP</label>
+                        <input name="host" class="form-control" value="@Model.SmtpHost" placeholder="smtp.gmail.com" required />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Puerto</label>
+                        <input name="port" type="number" class="form-control" value="@Model.SmtpPort" min="1" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Usuario / correo SMTP</label>
+                        <input name="user" type="email" class="form-control" value="@Model.SmtpUser" placeholder="correo@dominio.com" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Remitente visible</label>
+                        <input name="from" type="email" class="form-control" value="@Model.SmtpFrom" placeholder="correo@dominio.com" />
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Contrasena SMTP</label>
+                        <input name="password" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.SmtpPasswordGuardada ? "Guardada. Deja vacio para conservarla" : "Contrasena de aplicacion")" />
+                        <div class="form-text">Para Gmail: activa la verificacion en 2 pasos y genera una contrasena de aplicacion en tu cuenta de Google.</div>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-center">
+                        <div class="form-check mt-4">
+                            <input type="checkbox" class="form-check-input" name="enableSsl" id="smtpSsl" value="true" @(Model.SmtpEnableSsl ? "checked" : "") />
+                            <label class="form-check-label" for="smtpSsl">Usar SSL/TLS</label>
+                        </div>
+                    </div>
+                    <div class="col-12 d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary"><i class="bi bi-save"></i> Guardar configuracion</button>
+                        <span class="security-note"><i class="bi bi-shield-check"></i><span>La contrasena se cifra con las llaves internas de la aplicacion.</span></span>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+        <div class="card h-100 integration-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <span class="integration-icon"><i class="bi bi-send-check"></i></span>
+                    <span class="badge @(Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning")">Prueba SMTP</span>
+                </div>
+                <h5>Enviar correo de prueba</h5>
+                <p class="text-muted small">Despues de guardar, envia una prueba para confirmar que el servidor acepta la cuenta y la contrasena.</p>
+                <div class="alert alert-warning py-2 small">
+                    Si Gmail responde con error, revisa que no estes usando tu contrasena normal. Debe ser una contrasena de aplicacion de 16 caracteres generada por Google.
+                </div>
+                <form method="post" asp-action="ProbarSmtp">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <label class="form-label">Correo destino</label>
+                        <input name="emailPrueba" type="email" class="form-control" value="@Model.SmtpUser" placeholder="tu-correo@dominio.com" required />
+                    </div>
+                    <button class="btn btn-premium w-100" @(Model.SmtpConfigurado ? "" : "disabled")><i class="bi bi-envelope-check"></i> Enviar prueba</button>
+                </form>
+
+                <hr />
+                <dl class="integration-status mb-0">
+                    <dt>Servidor</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpHost) ? "Sin configurar" : Model.SmtpHost)</dd>
+                    <dt>Puerto</dt><dd>@Model.SmtpPort</dd>
+                    <dt>Usuario</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpUser) ? "Sin configurar" : Model.SmtpUser)</dd>
+                    <dt>Contrasena</dt><dd>@(Model.SmtpPasswordGuardada ? "Guardada cifrada" : "Sin configurar")</dd>
+                    <dt>SSL/TLS</dt><dd>@(Model.SmtpEnableSsl ? "Activo" : "Inactivo")</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+        <div class="card integration-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <span class="integration-icon"><i class="bi bi-whatsapp"></i></span>
+                    <span class="badge @(Model.WhatsAppConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.WhatsAppConfigurado ? "Configurado" : "Pendiente")</span>
+                </div>
+                <h5>WhatsApp Business Cloud API</h5>
+                <p class="text-muted small mb-3">Configura el numero empresarial que enviara recordatorios a clientes y avisos a tu WhatsApp. El token se guarda cifrado.</p>
+                <form method="post" asp-action="GuardarWhatsApp" class="row g-3">
+                    @Html.AntiForgeryToken()
+                    <div class="col-md-6">
+                        <label class="form-label">Phone Number ID</label>
+                        <input name="phoneNumberId" class="form-control" value="@Model.WhatsAppPhoneNumberId" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Version Graph API</label>
+                        <input name="graphApiVersion" class="form-control" value="@Model.WhatsAppGraphApiVersion" placeholder="v23.0" />
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label">Access Token</label>
+                        <input name="accessToken" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.WhatsAppTokenGuardado ? "Guardado. Deja vacio para conservarlo" : "Token permanente de Meta")" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Tu WhatsApp administrador</label>
+                        <input name="adminPhone" class="form-control" value="@Model.WhatsAppAdminPhone" placeholder="573043567463" />
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label">Plantilla aprobada para recordatorios</label>
+                        <input name="templateName" class="form-control" value="@Model.WhatsAppTemplateName" placeholder="recordatorio_pago" />
+                        <div class="form-text">Para mensajes automaticos fuera de la ventana de 24h debes usar una plantilla aprobada por Meta.</div>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Idioma plantilla</label>
+                        <input name="templateLanguage" class="form-control" value="@Model.WhatsAppTemplateLanguage" placeholder="es" />
+                    </div>
+                    <div class="col-12 d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary"><i class="bi bi-save"></i> Guardar WhatsApp</button>
+                        <span class="security-note"><i class="bi bi-shield-check"></i><span>El token se cifra con las llaves internas de la aplicacion.</span></span>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+        <div class="card integration-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <span class="integration-icon"><i class="bi bi-chat-dots"></i></span>
+                    <span class="badge @(Model.WhatsAppConfigurado ? "text-bg-success" : "text-bg-warning")">Prueba WhatsApp</span>
+                </div>
+                <h5>Enviar WhatsApp de prueba</h5>
+                <p class="text-muted small">Usa un numero en formato internacional. Para Colombia: <code>57</code> + celular.</p>
+                <form method="post" asp-action="ProbarWhatsApp">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <label class="form-label">Telefono destino</label>
+                        <input name="telefonoPrueba" class="form-control" value="@Model.WhatsAppAdminPhone" placeholder="573043567463" required />
+                    </div>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" name="usarPlantilla" id="usarPlantilla" value="true" />
+                        <label class="form-check-label" for="usarPlantilla">Probar usando plantilla configurada</label>
+                    </div>
+                    <button class="btn btn-premium w-100" @(Model.WhatsAppConfigurado ? "" : "disabled")><i class="bi bi-whatsapp"></i> Enviar prueba</button>
+                </form>
+                <hr />
+                <dl class="integration-status mb-0">
+                    <dt>Phone Number ID</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppPhoneNumberId) ? "Sin configurar" : Model.WhatsAppPhoneNumberId)</dd>
+                    <dt>Token</dt><dd>@(Model.WhatsAppTokenGuardado ? "Guardado cifrado" : "Sin configurar")</dd>
+                    <dt>Admin</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppAdminPhone) ? "Sin configurar" : Model.WhatsAppAdminPhone)</dd>
+                    <dt>Plantilla</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppTemplateName) ? "Sin configurar" : Model.WhatsAppTemplateName)</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>

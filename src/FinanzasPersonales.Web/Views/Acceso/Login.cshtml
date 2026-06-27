@@ -1,0 +1,47 @@
+@{
+    ViewBag.Titulo = "Ingresar - Finanzas Personales";
+    Layout = "_Layout";
+}
+<div class="login-shell">
+    <div class="col-12 col-sm-8 col-md-5 col-lg-4">
+        <div class="card login-card">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <span class="login-brand"><i class="bi bi-wallet2"></i></span>
+                    <span class="page-eyebrow mt-3">Gestion premium</span>
+                    <h4 class="mt-1">Finanzas Personales</h4>
+                    <p class="text-muted small">Control, claridad y crecimiento financiero</p>
+                </div>
+                @if (ViewBag.Error != null)
+                {
+                    <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle"></i> @ViewBag.Error</div>
+                }
+                <form method="post" asp-action="Login">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <label class="form-label">Correo electronico</label>
+                        <input name="email" type="email" class="form-control form-control-lg" autofocus autocomplete="username" required />
+                    </div>
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <label class="form-label">Contrasena</label>
+                            <a class="small text-decoration-none" asp-action="RecuperarClave">Olvide mi contrasena</a>
+                        </div>
+                        <input name="clave" type="password" class="form-control form-control-lg" autocomplete="current-password" required />
+                    </div>
+                    <button class="btn btn-primary btn-lg w-100" type="submit">
+                        <i class="bi bi-box-arrow-in-right"></i> Ingresar
+                    </button>
+                </form>
+                <div class="security-note mt-3"><i class="bi bi-shield-check"></i><span>Acceso protegido con correo verificado, bloqueo por intentos y sesion segura.</span></div>
+                <div class="public-contact-card">
+                    <strong><i class="bi bi-gem"></i> ¿Quieres suscribirte?</strong>
+                    <span><i class="bi bi-person"></i> Julian felipe serna Vasco</span>
+                    <a href="mailto:juliansernavasco@gmail.com"><i class="bi bi-envelope"></i> juliansernavasco@gmail.com</a>
+                    <a href="https://wa.me/573043567463" target="_blank" rel="noopener"><i class="bi bi-whatsapp"></i> +57 3043567463</a>
+                </div>
+                <button class="theme-toggle login-theme-toggle" type="button"><i class="bi bi-moon-stars"></i> Cambiar tema</button>
+            </div>
+        </div>
+    </div>
+</div>

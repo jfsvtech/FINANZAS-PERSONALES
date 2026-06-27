@@ -1,0 +1,87 @@
+@model AsistenteIndexVm
+@{
+    ViewBag.Titulo = "Asistente financiero";
+}
+<div class="page-heading d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <span class="page-eyebrow">Acciones inteligentes</span>
+        <h3 class="mb-1"><i class="bi bi-stars text-warning"></i> Asistente financiero</h3>
+        <p class="text-muted mb-0">Recomendaciones explicables y proximos compromisos.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-primary btn-sm" asp-action="Informe"><i class="bi bi-file-earmark-bar-graph"></i> Informe mensual</a>
+        <a class="btn btn-primary btn-sm" asp-action="Registro"><i class="bi bi-mic"></i> Registrar por voz</a>
+        @if (User.HasClaim("EsAdmin", "true"))
+        {
+            <a class="btn btn-outline-secondary btn-sm" asp-controller="Configuracion" asp-action="Integraciones"><i class="bi bi-plug"></i> Configurar envios</a>
+        }
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-7">
+        <div class="card h-100">
+            <div class="card-header fw-bold"><i class="bi bi-lightbulb"></i> Recomendaciones inteligentes</div>
+            <div class="card-body">
+                @if (!Model.Recomendaciones.Any())
+                {
+                    <div class="empty-state"><i class="bi bi-check-circle"></i>No hay recomendaciones urgentes por ahora.</div>
+                }
+                @foreach (var r in Model.Recomendaciones)
+                {
+                    <div class="insight-card insight-@r.Tipo">
+                        <span class="alert-icon"><i class="bi @r.Icono"></i></span>
+                        <span><strong>@r.Titulo</strong><small>@r.Detalle</small></span>
+                        <a class="btn btn-sm btn-outline-primary" asp-controller="@r.Controller" asp-action="@r.Action">@r.Accion</a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-5">
+        <div class="card h-100">
+            <div class="card-header fw-bold d-flex justify-content-between">
+                <span><i class="bi bi-bell"></i> Recordatorios</span>
+                <span class="badge text-bg-warning">@Model.Recordatorios.Count</span>
+            </div>
+            <div class="card-body">
+                @if (!Model.Recordatorios.Any())
+                {
+                    <div class="empty-state"><i class="bi bi-calendar-check"></i>No hay vencimientos cercanos.</div>
+                }
+                @for (var i = 0; i < Model.Recordatorios.Count; i++)
+                {
+                    var r = Model.Recordatorios[i];
+                    <div class="reminder-card">
+                        <span class="category-icon-sm"><i class="bi @r.Icono"></i></span>
+                        <span><strong>@r.Titulo</strong><small>@r.Detalle - @r.Fecha.ToString("dd MMM")</small></span>
+                        <span class="reminder-actions">
+                            <form method="post" asp-action="EnviarWhatsAppRecordatorio" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="indice" value="@i" />
+                                <input type="hidden" name="destino" value="cliente" />
+                                <button class="reminder-action-button" title="Enviar WhatsApp al cliente" @(string.IsNullOrWhiteSpace(r.Telefono) ? "disabled" : "")><i class="bi bi-whatsapp"></i></button>
+                            </form>
+                            <form method="post" asp-action="EnviarWhatsAppRecordatorio" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="indice" value="@i" />
+                                <input type="hidden" name="destino" value="admin" />
+                                <button class="reminder-action-button" title="Avisarme por WhatsApp"><i class="bi bi-phone-vibrate"></i></button>
+                            </form>
+                            @if (!string.IsNullOrWhiteSpace(r.WhatsAppUrl))
+                            {
+                                <a href="@r.WhatsAppUrl" target="_blank" title="Abrir WhatsApp manual"><i class="bi bi-box-arrow-up-right"></i></a>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(r.EmailUrl))
+                            {
+                                <a href="@r.EmailUrl" title="Enviar por correo"><i class="bi bi-envelope"></i></a>
+                            }
+                        </span>
+                    </div>
+                }
+                <p class="form-text mt-3 mb-0">Los botones de WhatsApp usan la API configurada. El enlace manual queda como respaldo.</p>
+            </div>
+        </div>
+    </div>
+</div>

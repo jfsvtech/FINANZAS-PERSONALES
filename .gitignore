@@ -1,0 +1,5 @@
+src/FinanzasPersonales.Web/App_Data/DataProtectionKeys/
+src/FinanzasPersonales.Web/bin/
+src/FinanzasPersonales.Web/obj/
+artifacts/
+.vs/

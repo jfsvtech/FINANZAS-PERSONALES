@@ -1,0 +1,349 @@
+@model UsuariosAdminVm
+@{
+    ViewBag.Titulo = "Clientes y suscripciones - Finanzas Personales";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <span class="page-eyebrow">Administracion SaaS</span>
+        <h4 class="mb-0"><i class="bi bi-people"></i> Clientes, acceso y suscripciones</h4>
+    </div>
+    <button class="btn btn-success btn-sm" onclick="abrirNuevo()"><i class="bi bi-plus-lg"></i> Nuevo cliente</button>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="mini-stat"><span>Clientes activos</span><strong>@Model.ClientesActivos</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="mini-stat mini-stat-success"><span>Ingreso esperado</span><strong>@Model.IngresoMensualEsperado.ToString("C0")</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="mini-stat"><span>Pagado este mes</span><strong>@Model.PagadoEsteMes.ToString("C0")</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="mini-stat mini-stat-danger"><span>Clientes en mora</span><strong>@Model.ClientesEnMora</strong></div></div>
+</div>
+
+<div class="alert alert-info"><i class="bi bi-shield-lock"></i> Puedes suspender clientes por mora. Al quedar inactivos no podran ingresar, aunque sus datos financieros se conservan.</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Cliente</th><th>Suscripcion</th><th>Proximo pago</th><th>Estado</th><th class="d-none d-xl-table-cell">Ultimo acceso</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var u in Model.Usuarios)
+            {
+                var bloqueado = u.BloqueadoHasta.HasValue && u.BloqueadoHasta.Value > DateTime.Now;
+                var vencido = u.DiasMora > 0 || u.EstadoSuscripcion == "moroso";
+                var pagosUsuario = Model.Pagos.Where(p => p.UsuarioId == u.Id).Take(8).ToList();
+                <tr class="@(u.Activo ? "" : "table-secondary text-muted")">
+                    <td>
+                        <strong>@u.NombreCompleto</strong>
+                        <small class="d-block text-muted">@u.Email</small>
+                        <small class="d-block text-muted">Creado: @u.CreadoEn.ToString("yyyy-MM-dd")</small>
+                    </td>
+                    <td>
+                        <strong>@u.ValorSuscripcion.ToString("C0")</strong>
+                        <small class="d-block text-muted text-capitalize">@u.CicloSuscripcion</small>
+                        <small class="d-block text-muted">Pagado total: @u.TotalPagadoSuscripcion.ToString("C0")</small>
+                    </td>
+                    <td>
+                        @if (u.ProximoPago.HasValue)
+                        {
+                            <strong class="@(vencido ? "text-danger" : "text-success")">@u.ProximoPago.Value.ToString("yyyy-MM-dd")</strong>
+                            <small class="d-block text-muted">Gracia: @u.DiasGracia dias</small>
+                            @if (u.DiasMora > 0) { <small class="d-block text-danger">Mora: @u.DiasMora dias</small> }
+                        }
+                        else
+                        {
+                            <span class="text-muted">Sin fecha</span>
+                        }
+                    </td>
+                    <td>
+                        <span class="badge @(u.EstadoSuscripcion == "moroso" ? "text-bg-danger" : u.EstadoSuscripcion == "prueba" ? "text-bg-warning" : u.EstadoSuscripcion == "cancelado" ? "text-bg-danger" : "text-bg-success")">@u.EstadoSuscripcion</span>
+                        <span class="badge @(u.EmailConfirmado ? "text-bg-success" : "text-bg-warning")">@(u.EmailConfirmado ? "Correo OK" : "Sin verificar")</span>
+                        <span class="badge @(u.Activo ? "text-bg-primary" : "text-bg-danger")">@(u.Activo ? "Acceso activo" : "Acceso suspendido")</span>
+                        <div class="permission-chips mt-1">
+                            @if (u.PermisoGastos) { <span>Gastos</span> }
+                            @if (u.PermisoPrestamos) { <span>Prestamos</span> }
+                            @if (u.PermisoInversiones) { <span>Inversiones</span> }
+                            @if (u.PermisoDirectivo) { <span>Directivo</span> }
+                            @if (u.PermisoAsistente) { <span>Asistente</span> }
+                            @if (u.PermisoCalendario) { <span>Calendario</span> }
+                        </div>
+                        @if (bloqueado) { <span class="badge text-bg-danger">Bloqueado seguridad</span> }
+                    </td>
+                    <td class="d-none d-xl-table-cell">@(u.UltimoAcceso?.ToString("yyyy-MM-dd HH:mm") ?? "Sin acceso")</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex flex-wrap justify-content-end gap-1">
+                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#pagos-@u.Id" title="Historial de pagos"><i class="bi bi-receipt"></i></button>
+                            <button class="btn btn-sm btn-outline-success" onclick='abrirPago(@System.Text.Json.JsonSerializer.Serialize(new { id = u.Id, nombre = u.NombreCompleto, valor = u.ValorSuscripcion, ciclo = u.CicloSuscripcion, proximoPago = u.ProximoPago?.ToString("yyyy-MM-dd") }))' title="Registrar pago"><i class="bi bi-cash-coin"></i></button>
+                            @if (!u.EmailConfirmado)
+                            {
+                                <form method="post" asp-action="ReenviarVerificacion">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@u.Id" />
+                                    <button class="btn btn-sm btn-outline-primary" title="Reenviar verificacion"><i class="bi bi-envelope-check"></i></button>
+                                </form>
+                            }
+                            @if (u.Activo)
+                            {
+                                <form method="post" asp-action="SuspenderPorMora" onsubmit="return confirm('Suspender el acceso de este cliente por mora?')">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@u.Id" />
+                                    <button class="btn btn-sm btn-outline-danger" title="Suspender por mora"><i class="bi bi-person-x"></i></button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form method="post" asp-action="ReactivarCliente">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@u.Id" />
+                                    <button class="btn btn-sm btn-outline-success" title="Reactivar cliente"><i class="bi bi-person-check"></i></button>
+                                </form>
+                            }
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    onclick='abrirEditar(@System.Text.Json.JsonSerializer.Serialize(new {
+                                        id = u.Id, email = u.Email, nombreCompleto = u.NombreCompleto, esAdmin = u.EsAdmin, activo = u.Activo,
+                                        valorSuscripcion = u.ValorSuscripcion, cicloSuscripcion = u.CicloSuscripcion,
+                                        fechaInicioSuscripcion = u.FechaInicioSuscripcion?.ToString("yyyy-MM-dd"),
+                                        proximoPago = u.ProximoPago?.ToString("yyyy-MM-dd"), diasGracia = u.DiasGracia,
+                                        estadoSuscripcion = u.EstadoSuscripcion, notasSuscripcion = u.NotasSuscripcion,
+                                        permisoGastos = u.PermisoGastos, permisoPrestamos = u.PermisoPrestamos,
+                                        permisoInversiones = u.PermisoInversiones, permisoDirectivo = u.PermisoDirectivo,
+                                        permisoAsistente = u.PermisoAsistente, permisoCalendario = u.PermisoCalendario
+                                    }))'>
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="collapse subscription-history-row" id="pagos-@u.Id">
+                    <td colspan="6">
+                        <div class="subscription-history">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong><i class="bi bi-clock-history"></i> Historial de pagos de @u.NombreCompleto</strong>
+                                <button class="btn btn-sm btn-primary" onclick='abrirPago(@System.Text.Json.JsonSerializer.Serialize(new { id = u.Id, nombre = u.NombreCompleto, valor = u.ValorSuscripcion, ciclo = u.CicloSuscripcion, proximoPago = u.ProximoPago?.ToString("yyyy-MM-dd") }))'>Registrar pago</button>
+                            </div>
+                            @if (pagosUsuario.Any())
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0">
+                                        <thead><tr><th>Fecha</th><th>Monto</th><th>Periodo</th><th>Metodo</th><th>Referencia</th><th>Notas</th></tr></thead>
+                                        <tbody>
+                                        @foreach (var p in pagosUsuario)
+                                        {
+                                            <tr>
+                                                <td>@p.FechaPago.ToString("yyyy-MM-dd")</td>
+                                                <td>@p.Monto.ToString("C0")</td>
+                                                <td>@p.PeriodoCubierto</td>
+                                                <td>@p.Metodo</td>
+                                                <td>@p.Referencia</td>
+                                                <td>@p.Notas</td>
+                                            </tr>
+                                        }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-muted small mb-0">Este cliente aun no tiene pagos registrados.</p>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalUsuario" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="usId" value="0" />
+            <div class="modal-header">
+                <h5 class="modal-title" id="usTitulo">Nuevo cliente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Correo electronico</label>
+                        <input name="email" id="usEmail" type="email" class="form-control" maxlength="150" required autocomplete="email" />
+                        <div class="form-text">El cliente debe verificar este correo antes de ingresar.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nombre completo</label>
+                        <input name="nombreCompleto" id="usNombreCompleto" class="form-control" maxlength="100" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" id="usEtiquetaClave">Contrasena inicial</label>
+                        <input type="password" name="clave" id="usClave" class="form-control" minlength="12" autocomplete="new-password" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Valor de suscripcion</label>
+                        <input type="number" name="valorSuscripcion" id="usValorSuscripcion" class="form-control" min="0" step="1000" value="0" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Ciclo</label>
+                        <select name="cicloSuscripcion" id="usCicloSuscripcion" class="form-select">
+                            <option value="mensual">Mensual</option>
+                            <option value="trimestral">Trimestral</option>
+                            <option value="semestral">Semestral</option>
+                            <option value="anual">Anual</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Inicio suscripcion</label>
+                        <input type="date" name="fechaInicioSuscripcion" id="usFechaInicioSuscripcion" class="form-control" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Proximo pago</label>
+                        <input type="date" name="proximoPago" id="usProximoPago" class="form-control" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Dias de gracia</label>
+                        <input type="number" name="diasGracia" id="usDiasGracia" class="form-control" min="0" max="90" value="3" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Estado suscripcion</label>
+                        <select name="estadoSuscripcion" id="usEstadoSuscripcion" class="form-select">
+                            <option value="activa">Activa</option>
+                            <option value="prueba">Prueba</option>
+                            <option value="moroso">Moroso</option>
+                            <option value="cancelado">Cancelado</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end gap-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" name="esAdmin" id="usEsAdmin" value="true" />
+                            <label class="form-check-label" for="usEsAdmin">Admin</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" name="activo" id="usActivo" value="true" checked />
+                            <label class="form-check-label" for="usActivo">Acceso activo</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notas internas de suscripcion</label>
+                        <textarea name="notasSuscripcion" id="usNotasSuscripcion" class="form-control" maxlength="500" rows="2"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Permisos del suscriptor</label>
+                        <div class="permissions-grid">
+                            <label><input type="checkbox" name="permisoGastos" id="usPermisoGastos" value="true" checked /> <span><strong>Gastos</strong><small>Movimientos, metas, cuentas, categorias y analisis financiero.</small></span></label>
+                            <label><input type="checkbox" name="permisoPrestamos" id="usPermisoPrestamos" value="true" checked /> <span><strong>Prestamos</strong><small>Personas, prestamos y analisis de prestamos.</small></span></label>
+                            <label><input type="checkbox" name="permisoInversiones" id="usPermisoInversiones" value="true" checked /> <span><strong>Inversiones</strong><small>Portafolio, tipos y analisis de inversiones.</small></span></label>
+                            <label><input type="checkbox" name="permisoDirectivo" id="usPermisoDirectivo" value="true" /> <span><strong>Analisis directivo</strong><small>Vista ejecutiva global.</small></span></label>
+                            <label><input type="checkbox" name="permisoAsistente" id="usPermisoAsistente" value="true" /> <span><strong>Asistente financiero</strong><small>Recomendaciones, informes y registro inteligente.</small></span></label>
+                            <label><input type="checkbox" name="permisoCalendario" id="usPermisoCalendario" value="true" /> <span><strong>Calendario financiero</strong><small>Agenda unificada y vencimientos.</small></span></label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="password-policy"><span><i class="bi bi-check2-circle"></i> 12 caracteres</span><span><i class="bi bi-check2-circle"></i> Mayuscula, minuscula, numero y simbolo</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="modalPago" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-action="RegistrarPago">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="usuarioId" id="pagoUsuarioId" />
+            <div class="modal-header">
+                <h5 class="modal-title">Registrar pago de suscripcion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-light small mb-3"><i class="bi bi-person"></i> <span id="pagoCliente"></span></div>
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">Fecha pago</label><input type="date" name="fechaPago" id="pagoFecha" class="form-control" required /></div>
+                    <div class="col-md-6"><label class="form-label">Monto</label><input type="number" name="monto" id="pagoMonto" class="form-control" min="1" step="1000" required /></div>
+                    <div class="col-12"><label class="form-label">Periodo cubierto</label><input name="periodoCubierto" id="pagoPeriodo" class="form-control" maxlength="80" placeholder="Ej: Junio 2026" required /></div>
+                    <div class="col-md-6"><label class="form-label">Metodo</label><input name="metodo" class="form-control" maxlength="60" placeholder="Transferencia, efectivo..." /></div>
+                    <div class="col-md-6"><label class="form-label">Referencia</label><input name="referencia" class="form-control" maxlength="100" /></div>
+                    <div class="col-12"><label class="form-label">Notas</label><textarea name="notas" class="form-control" maxlength="300" rows="2"></textarea></div>
+                    <div class="col-12"><div class="form-check"><input type="checkbox" class="form-check-input" name="actualizarProximoPago" id="pagoActualizarProximo" value="true" checked /><label class="form-check-label" for="pagoActualizarProximo">Actualizar automaticamente proximo pago y reactivar si estaba suspendido</label></div></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Registrar pago</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const modal = new bootstrap.Modal(document.getElementById('modalUsuario'));
+    const modalPago = new bootstrap.Modal(document.getElementById('modalPago'));
+    const hoy = new Date().toISOString().slice(0, 10);
+
+    function abrirNuevo() {
+        document.getElementById('usId').value = 0;
+        document.getElementById('usTitulo').textContent = 'Nuevo cliente';
+        document.getElementById('usEmail').value = '';
+        document.getElementById('usNombreCompleto').value = '';
+        document.getElementById('usClave').value = '';
+        document.getElementById('usClave').required = true;
+        document.getElementById('usEtiquetaClave').textContent = 'Contrasena inicial';
+        document.getElementById('usValorSuscripcion').value = 0;
+        document.getElementById('usCicloSuscripcion').value = 'mensual';
+        document.getElementById('usFechaInicioSuscripcion').value = hoy;
+        document.getElementById('usProximoPago').value = hoy;
+        document.getElementById('usDiasGracia').value = 3;
+        document.getElementById('usEstadoSuscripcion').value = 'activa';
+        document.getElementById('usNotasSuscripcion').value = '';
+        document.getElementById('usPermisoGastos').checked = true;
+        document.getElementById('usPermisoPrestamos').checked = true;
+        document.getElementById('usPermisoInversiones').checked = true;
+        document.getElementById('usPermisoDirectivo').checked = false;
+        document.getElementById('usPermisoAsistente').checked = false;
+        document.getElementById('usPermisoCalendario').checked = false;
+        document.getElementById('usEsAdmin').checked = false;
+        document.getElementById('usActivo').checked = true;
+        modal.show();
+    }
+    function abrirEditar(u) {
+        document.getElementById('usId').value = u.id;
+        document.getElementById('usTitulo').textContent = 'Editar cliente';
+        document.getElementById('usEmail').value = u.email;
+        document.getElementById('usNombreCompleto').value = u.nombreCompleto;
+        document.getElementById('usClave').value = '';
+        document.getElementById('usClave').required = false;
+        document.getElementById('usEtiquetaClave').textContent = 'Nueva contrasena (dejar vacia para no cambiarla)';
+        document.getElementById('usValorSuscripcion').value = u.valorSuscripcion || 0;
+        document.getElementById('usCicloSuscripcion').value = u.cicloSuscripcion || 'mensual';
+        document.getElementById('usFechaInicioSuscripcion').value = u.fechaInicioSuscripcion || '';
+        document.getElementById('usProximoPago').value = u.proximoPago || '';
+        document.getElementById('usDiasGracia').value = u.diasGracia ?? 3;
+        document.getElementById('usEstadoSuscripcion').value = u.estadoSuscripcion || 'activa';
+        document.getElementById('usNotasSuscripcion').value = u.notasSuscripcion || '';
+        document.getElementById('usPermisoGastos').checked = !!u.permisoGastos;
+        document.getElementById('usPermisoPrestamos').checked = !!u.permisoPrestamos;
+        document.getElementById('usPermisoInversiones').checked = !!u.permisoInversiones;
+        document.getElementById('usPermisoDirectivo').checked = !!u.permisoDirectivo;
+        document.getElementById('usPermisoAsistente').checked = !!u.permisoAsistente;
+        document.getElementById('usPermisoCalendario').checked = !!u.permisoCalendario;
+        document.getElementById('usEsAdmin').checked = u.esAdmin;
+        document.getElementById('usActivo').checked = u.activo;
+        modal.show();
+    }
+    function abrirPago(u) {
+        document.getElementById('pagoUsuarioId').value = u.id;
+        document.getElementById('pagoCliente').textContent = u.nombre;
+        document.getElementById('pagoFecha').value = hoy;
+        document.getElementById('pagoMonto').value = u.valor || '';
+        document.getElementById('pagoPeriodo').value = u.proximoPago ? `Periodo desde ${u.proximoPago}` : '';
+        document.getElementById('pagoActualizarProximo').checked = true;
+        modalPago.show();
+    }
+</script>
+}

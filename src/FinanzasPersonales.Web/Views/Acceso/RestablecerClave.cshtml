@@ -1,0 +1,43 @@
+@{
+    ViewBag.Titulo = "Nueva contrasena - Finanzas Personales";
+    Layout = "_Layout";
+    var token = ViewBag.Token as string ?? "";
+}
+<div class="login-shell">
+    <div class="col-12 col-sm-8 col-md-5 col-lg-4">
+        <div class="card login-card">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <span class="login-brand"><i class="bi bi-key"></i></span>
+                    <span class="page-eyebrow mt-3">Proteccion de cuenta</span>
+                    <h4 class="mt-1">Crear nueva contrasena</h4>
+                    <p class="text-muted small">Usa una clave fuerte y unica para este sistema.</p>
+                </div>
+                @if (ViewBag.Error != null)
+                {
+                    <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle"></i> @ViewBag.Error</div>
+                }
+                <form method="post" asp-action="RestablecerClave">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="token" value="@token" />
+                    <div class="mb-3">
+                        <label class="form-label">Nueva contrasena</label>
+                        <input name="claveNueva" type="password" class="form-control form-control-lg" minlength="12" autocomplete="new-password" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirmar contrasena</label>
+                        <input name="confirmarClave" type="password" class="form-control form-control-lg" minlength="12" autocomplete="new-password" required />
+                    </div>
+                    <div class="password-policy mb-4">
+                        <span><i class="bi bi-check2-circle"></i> Minimo 12 caracteres</span>
+                        <span><i class="bi bi-check2-circle"></i> Mayuscula, minuscula, numero y simbolo</span>
+                    </div>
+                    <button class="btn btn-primary btn-lg w-100" type="submit">
+                        <i class="bi bi-shield-check"></i> Actualizar contrasena
+                    </button>
+                </form>
+                <button class="theme-toggle login-theme-toggle" type="button"><i class="bi bi-moon-stars"></i> Cambiar tema</button>
+            </div>
+        </div>
+    </div>
+</div>

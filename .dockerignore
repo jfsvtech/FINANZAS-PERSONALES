@@ -1,0 +1,13 @@
+.git
+.vs
+.agents
+.codex
+**/bin
+**/obj
+artifacts
+tmp
+App_Data
+*.user
+*.suo
+*.db
+*.sqlite

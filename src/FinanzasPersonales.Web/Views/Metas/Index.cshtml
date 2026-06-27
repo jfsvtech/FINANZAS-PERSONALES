@@ -1,0 +1,90 @@
+@model MetasIndexVm
+@{
+    ViewBag.Titulo = "Metas de ahorro - Finanzas Personales";
+}
+
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <span class="page-eyebrow">Planificacion</span>
+        <h3 class="mb-1"><i class="bi bi-flag text-primary"></i> Metas de ahorro</h3>
+        <p class="text-muted mb-0">Define objetivos y registra aportes sin alterar los saldos de tus cuentas.</p>
+    </div>
+    <button class="btn btn-premium btn-sm" onclick="abrirMeta()"><i class="bi bi-plus-lg"></i> Nueva meta</button>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-6"><div class="mini-stat"><span>Objetivo activo</span><strong>@Model.TotalObjetivo.ToString("C0")</strong></div></div>
+    <div class="col-6"><div class="mini-stat mini-stat-success"><span>Ahorrado registrado</span><strong>@Model.TotalAhorrado.ToString("C0")</strong></div></div>
+</div>
+
+<div class="row g-3">
+@foreach (var meta in Model.Metas)
+{
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card border-0 shadow-sm h-100 goal-card @(!meta.Activo ? "opacity-75" : "")" style="--goal-color:@meta.Color">
+            <div class="card-body">
+                <div class="d-flex justify-content-between gap-2 mb-3">
+                    <div>
+                        <h5 class="mb-1">@meta.Nombre</h5>
+                        <span class="text-muted small">@(meta.FechaObjetivo?.ToString("dd MMM yyyy") ?? "Sin fecha limite")</span>
+                    </div>
+                    <span class="goal-percent">@meta.Porcentaje%</span>
+                </div>
+                <div class="progress mb-2" style="height:12px"><div class="progress-bar" style="width:@meta.Porcentaje%;background:@meta.Color"></div></div>
+                <div class="d-flex justify-content-between small mb-3">
+                    <strong>@meta.Ahorrado.ToString("C0")</strong>
+                    <span class="text-muted">de @meta.MontoObjetivo.ToString("C0")</span>
+                </div>
+                @if (meta.AporteMensualSugerido > 0)
+                {
+                    <div class="goal-suggestion mb-3"><i class="bi bi-lightbulb"></i> Aporta cerca de <strong>@meta.AporteMensualSugerido.ToString("C0")/mes</strong></div>
+                }
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm flex-fill" onclick='abrirAporte(@meta.Id, @System.Text.Json.JsonSerializer.Serialize(meta.Nombre))'><i class="bi bi-plus-circle"></i> Aportar</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick='editarMeta(@System.Text.Json.JsonSerializer.Serialize(new { id=meta.Id,nombre=meta.Nombre,monto=meta.MontoObjetivo,fecha=meta.FechaObjetivo?.ToString("yyyy-MM-dd"),color=meta.Color,activo=meta.Activo }))'><i class="bi bi-pencil"></i></button>
+                    <form method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar esta meta y sus aportes?')">
+                        @Html.AntiForgeryToken()<input type="hidden" name="id" value="@meta.Id" />
+                        <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+@if (!Model.Metas.Any())
+{
+    <div class="col-12"><div class="empty-state"><i class="bi bi-flag"></i><h5>Crea tu primera meta</h5><p>Viaje, fondo de emergencia, vivienda o cualquier objetivo importante.</p><button class="btn btn-primary" onclick="abrirMeta()">Crear meta</button></div></div>
+}
+</div>
+
+<div class="modal fade" id="modalMeta"><div class="modal-dialog"><form class="modal-content" method="post" asp-action="Guardar">
+    @Html.AntiForgeryToken()<input type="hidden" name="id" id="metaId" value="0"/>
+    <div class="modal-header"><h5 class="modal-title">Meta de ahorro</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+        <div class="mb-3"><label class="form-label">Nombre</label><input class="form-control" name="nombre" id="metaNombre" required maxlength="100"/></div>
+        <div class="row g-2 mb-3"><div class="col-6"><label class="form-label">Monto objetivo</label><input class="form-control" type="number" min="1" name="montoObjetivo" id="metaMonto" required/></div>
+        <div class="col-6"><label class="form-label">Fecha objetivo</label><input class="form-control" type="date" name="fechaObjetivo" id="metaFecha"/></div></div>
+        <div class="row g-2"><div class="col-6"><label class="form-label">Color</label><input class="form-control form-control-color w-100" type="color" name="color" id="metaColor" value="#6f42c1"/></div>
+        <div class="col-6 pt-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="activo" value="true" id="metaActivo" checked/><label class="form-check-label">Activa</label></div></div></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar</button></div>
+</form></div></div>
+
+<div class="modal fade" id="modalAporte"><div class="modal-dialog"><form class="modal-content" method="post" asp-action="Aportar">
+    @Html.AntiForgeryToken()<input type="hidden" name="metaId" id="aporteMetaId"/>
+    <div class="modal-header"><h5 class="modal-title" id="aporteTitulo">Registrar aporte</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body"><div class="row g-2 mb-3"><div class="col-6"><label class="form-label">Fecha</label><input class="form-control" type="date" name="fecha" id="aporteFecha" required/></div><div class="col-6"><label class="form-label">Monto</label><input class="form-control" type="number" min="1" name="monto" required/></div></div><label class="form-label">Nota</label><input class="form-control" name="notas" maxlength="200"/></div>
+    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Registrar</button></div>
+</form></div></div>
+
+@section Scripts {
+<script>
+const modalMeta=new bootstrap.Modal(document.getElementById('modalMeta')),modalAporte=new bootstrap.Modal(document.getElementById('modalAporte'));
+function abrirMeta(){document.getElementById('metaId').value=0;document.getElementById('metaNombre').value='';document.getElementById('metaMonto').value='';document.getElementById('metaFecha').value='';document.getElementById('metaColor').value='#6f42c1';document.getElementById('metaActivo').checked=true;modalMeta.show();}
+function editarMeta(m){document.getElementById('metaId').value=m.id;document.getElementById('metaNombre').value=m.nombre;document.getElementById('metaMonto').value=m.monto;document.getElementById('metaFecha').value=m.fecha||'';document.getElementById('metaColor').value=m.color;document.getElementById('metaActivo').checked=m.activo;modalMeta.show();}
+function abrirAporte(id,nombre){document.getElementById('aporteMetaId').value=id;document.getElementById('aporteTitulo').textContent='Aportar a '+nombre;document.getElementById('aporteFecha').value=new Date().toISOString().slice(0,10);modalAporte.show();}
+const aporteId=parseInt(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["aporte"].ToString())))||0;
+const metasCalendario=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Metas.Select(x=>new{id=x.Id,nombre=x.Nombre})));
+if(aporteId){const meta=metasCalendario.find(x=>x.id===aporteId);if(meta)abrirAporte(meta.id,meta.nombre);}
+</script>
+}

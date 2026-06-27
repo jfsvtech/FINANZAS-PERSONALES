@@ -1,0 +1,331 @@
+@model MovimientosIndexVm
+@{
+    ViewBag.Titulo = "Movimientos - Finanzas Personales";
+    var cuentasDinero = Model.Cuentas.Where(c => c.Tipo != "tarjeta_credito").ToList();
+    var tarjetas = Model.Cuentas.Where(c => c.Tipo == "tarjeta_credito").ToList();
+
+    var hoy = DateTime.Today;
+    var esteMesD = new DateTime(hoy.Year, hoy.Month, 1);
+    var esteMesH = esteMesD.AddMonths(1).AddDays(-1);
+    var mesPasadoD = esteMesD.AddMonths(-1);
+    var mesPasadoH = esteMesD.AddDays(-1);
+    var tresMesesD = esteMesD.AddMonths(-2);
+    var anioD = new DateTime(hoy.Year, 1, 1);
+    var anioH = new DateTime(hoy.Year, 12, 31);
+    string F(DateTime f) => f.ToString("yyyy-MM-dd");
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h4 class="mb-0">
+        <i class="bi bi-arrow-left-right"></i> Movimientos
+        <span class="text-muted fs-6">@Model.Desde.ToString("dd MMM yyyy") &ndash; @Model.Hasta.ToString("dd MMM yyyy")</span>
+    </h4>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-success btn-sm" asp-action="ExportarExcel" asp-route-desde="@F(Model.Desde)" asp-route-hasta="@F(Model.Hasta)"
+           asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">
+            <i class="bi bi-file-earmark-excel"></i> Excel
+        </a>
+        <a class="btn btn-outline-primary btn-sm" asp-controller="Importar" asp-action="Index">
+            <i class="bi bi-upload"></i> Importar
+        </a>
+        <button class="btn btn-success btn-sm" onclick="abrirNuevo()"><i class="bi bi-plus-lg"></i> Registrar</button>
+    </div>
+</div>
+
+<form method="get" class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <div class="d-flex gap-1 flex-wrap mb-2">
+            <span class="text-muted small me-1 align-self-center"><i class="bi bi-lightning"></i> Rapido:</span>
+            <a class="btn btn-sm @(Model.Desde == esteMesD && Model.Hasta == esteMesH ? "btn-primary" : "btn-outline-primary")"
+               asp-action="Index" asp-route-desde="@F(esteMesD)" asp-route-hasta="@F(esteMesH)"
+               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">Este mes</a>
+            <a class="btn btn-sm @(Model.Desde == mesPasadoD && Model.Hasta == mesPasadoH ? "btn-primary" : "btn-outline-primary")"
+               asp-action="Index" asp-route-desde="@F(mesPasadoD)" asp-route-hasta="@F(mesPasadoH)"
+               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">Mes pasado</a>
+            <a class="btn btn-sm @(Model.Desde == tresMesesD && Model.Hasta == esteMesH ? "btn-primary" : "btn-outline-primary")"
+               asp-action="Index" asp-route-desde="@F(tresMesesD)" asp-route-hasta="@F(esteMesH)"
+               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">Ultimos 3 meses</a>
+            <a class="btn btn-sm @(Model.Desde == anioD && Model.Hasta == anioH ? "btn-primary" : "btn-outline-primary")"
+               asp-action="Index" asp-route-desde="@F(anioD)" asp-route-hasta="@F(anioH)"
+               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">Este a&ntilde;o</a>
+        </div>
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Desde</label>
+                <input type="date" name="desde" class="form-control form-control-sm" value="@F(Model.Desde)" />
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Hasta</label>
+                <input type="date" name="hasta" class="form-control form-control-sm" value="@F(Model.Hasta)" />
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Tipo</label>
+                <select name="tipo" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    @{
+                        var tipos = new[] { ("ingreso", "Ingresos"), ("gasto", "Gastos"), ("pago_tarjeta", "Pagos de tarjeta"), ("transferencia", "Transferencias") };
+                    }
+                    @foreach (var (valor, texto) in tipos)
+                    {
+                        if (Model.FiltroTipo == valor) { <option value="@valor" selected>@texto</option> }
+                        else { <option value="@valor">@texto</option> }
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Cuenta</label>
+                <select name="cuentaId" class="form-select form-select-sm">
+                    <option value="">Todas</option>
+                    @foreach (var c in Model.Cuentas)
+                    {
+                        if (Model.FiltroCuentaId == c.Id) { <option value="@c.Id" selected>@c.Nombre</option> }
+                        else { <option value="@c.Id">@c.Nombre</option> }
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Categoria</label>
+                <select name="categoriaId" class="form-select form-select-sm">
+                    <option value="">Todas</option>
+                    @foreach (var c in Model.Categorias)
+                    {
+                        if (Model.FiltroCategoriaId == c.Id) { <option value="@c.Id" selected>@c.Nombre</option> }
+                        else { <option value="@c.Id">@c.Nombre</option> }
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <button class="btn btn-outline-primary btn-sm w-100" type="submit"><i class="bi bi-funnel"></i> Filtrar</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="row g-2 mb-3 text-center">
+    <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2">
+        <div class="small text-muted">Ingresos</div><div class="fw-bold text-success">@Model.TotalIngresos.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2">
+        <div class="small text-muted">Gastos</div><div class="fw-bold text-danger">@Model.TotalGastos.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2">
+        <div class="small text-muted">Pagos tarjeta</div><div class="fw-bold text-warning">@Model.TotalPagosTarjeta.ToString("C0")</div>
+    </div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2">
+        <div class="small text-muted">Transferencias</div><div class="fw-bold text-info">@Model.TotalTransferencias.ToString("C0")</div>
+    </div></div></div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Fecha</th><th>Tipo</th><th>Cuenta</th><th class="d-none d-md-table-cell">Categoria</th>
+                    <th class="d-none d-md-table-cell">Descripcion</th><th class="text-end">Monto</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var m in Model.Movimientos)
+            {
+                <tr>
+                    <td class="text-nowrap">@m.Fecha.ToString("dd MMM")</td>
+                    <td>
+                        @if (m.Tipo == "ingreso") { <span class="badge text-bg-success">Ingreso</span> }
+                        else if (m.Tipo == "gasto") { <span class="badge text-bg-danger">Gasto</span> }
+                        else if (m.Tipo == "transferencia") { <span class="badge text-bg-info">Transferencia</span> }
+                        else { <span class="badge text-bg-warning">Pago tarjeta</span> }
+                    </td>
+                    <td>
+                        @m.CuentaNombre
+                        @if (m.Tipo is "pago_tarjeta" or "transferencia") { <i class="bi bi-arrow-right"></i> @m.CuentaDestinoNombre }
+                    </td>
+                    <td class="d-none d-md-table-cell">
+                        @if (m.CategoriaNombre != null)
+                        {
+                            <span class="category-chip" style="--category-color:@(m.CategoriaColor ?? "#6c757d");"><i class="bi @m.CategoriaIcono"></i>@m.CategoriaNombre</span>
+                        }
+                    </td>
+                    <td class="d-none d-md-table-cell text-muted small">@m.Descripcion</td>
+                    <td class="text-end fw-bold text-nowrap @(m.Tipo == "ingreso" ? "text-success" : m.Tipo == "gasto" ? "text-danger" : m.Tipo == "transferencia" ? "text-info" : "text-warning")">
+                        @((m.Tipo == "ingreso" ? "+" : m.Tipo == "transferencia" ? "" : "-") + m.Monto.ToString("C0"))
+                    </td>
+                    <td class="text-end text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary" title="Editar"
+                                onclick='abrirEditar(@System.Text.Json.JsonSerializer.Serialize(new {
+                                    id = m.Id, fecha = m.Fecha.ToString("yyyy-MM-dd"), tipo = m.Tipo,
+                                    cuentaId = m.CuentaId, cuentaDestinoId = m.CuentaDestinoId,
+                                    categoriaId = m.CategoriaId, descripcion = m.Descripcion, monto = m.Monto
+                                }))'><i class="bi bi-pencil"></i></button>
+                        <form class="d-inline" method="post" asp-action="Eliminar"
+                              onsubmit="return confirm('Eliminar este movimiento?');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@m.Id" />
+                            <input type="hidden" name="desde" value="@F(Model.Desde)" />
+                            <input type="hidden" name="hasta" value="@F(Model.Hasta)" />
+                            <button class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            @if (!Model.Movimientos.Any())
+            {
+                <tr><td colspan="7" class="text-center text-muted py-4">No hay movimientos en este periodo.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalMovimiento" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="mvId" value="0" />
+            <div class="modal-header">
+                <h5 class="modal-title" id="mvTitulo">Registrar movimiento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tipo</label>
+                    <div class="btn-group w-100 flex-wrap" role="group">
+                        <input type="radio" class="btn-check" name="tipo" id="tipoGasto" value="gasto" checked onchange="cambioTipo()" />
+                        <label class="btn btn-outline-danger" for="tipoGasto">Gasto</label>
+                        <input type="radio" class="btn-check" name="tipo" id="tipoIngreso" value="ingreso" onchange="cambioTipo()" />
+                        <label class="btn btn-outline-success" for="tipoIngreso">Ingreso</label>
+                        <input type="radio" class="btn-check" name="tipo" id="tipoPago" value="pago_tarjeta" onchange="cambioTipo()" @(tarjetas.Any() ? "" : "disabled") />
+                        <label class="btn btn-outline-warning" for="tipoPago">Pago tarjeta</label>
+                        <input type="radio" class="btn-check" name="tipo" id="tipoTransfer" value="transferencia" onchange="cambioTipo()" @(cuentasDinero.Count >= 2 ? "" : "disabled") />
+                        <label class="btn btn-outline-info" for="tipoTransfer">Transferencia</label>
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Fecha</label>
+                        <input type="date" name="fecha" id="mvFecha" class="form-control" required />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Monto</label>
+                        <input type="number" name="monto" id="mvMonto" class="form-control" min="1" step="0.01" inputmode="decimal" required />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" id="etiquetaCuenta">Medio de pago</label>
+                    <select name="cuentaId" id="mvCuenta" class="form-select" required></select>
+                </div>
+                <div class="mb-3 d-none" id="grupoDestino">
+                    <label class="form-label" id="etiquetaDestino">Tarjeta que pagas</label>
+                    <select name="cuentaDestinoId" id="mvDestino" class="form-select"></select>
+                </div>
+                <div class="mb-3" id="grupoCategoria">
+                    <label class="form-label">Categoria</label>
+                    <select name="categoriaId" id="mvCategoria" class="form-select"></select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Descripcion (opcional)</label>
+                    <input name="descripcion" id="mvDescripcion" class="form-control" maxlength="200" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const todasCuentas = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.Cuentas.Select(c => new { id = c.Id, nombre = c.Nombre, tipo = c.Tipo })));
+    const todasCategorias = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.Categorias.Select(c => new { id = c.Id, nombre = c.Nombre, tipo = c.Tipo })));
+
+    const modal = new bootstrap.Modal(document.getElementById('modalMovimiento'));
+
+    function tipoSeleccionado() {
+        return document.querySelector('input[name="tipo"]:checked').value;
+    }
+
+    function cambioTipo(cuentaSel, categoriaSel, destinoSel) {
+        const tipo = tipoSeleccionado();
+        const esPago = tipo === 'pago_tarjeta';
+        const esTransfer = tipo === 'transferencia';
+        const selCuenta = document.getElementById('mvCuenta');
+        const selCategoria = document.getElementById('mvCategoria');
+        const selDestino = document.getElementById('mvDestino');
+        const grupoDestino = document.getElementById('grupoDestino');
+        const grupoCategoria = document.getElementById('grupoCategoria');
+        const etiqueta = document.getElementById('etiquetaCuenta');
+
+        // Cuentas origen validas segun el tipo:
+        // gasto: cualquier cuenta (incluye tarjeta = compra con tarjeta)
+        // ingreso / pago_tarjeta / transferencia (origen): solo efectivo o debito
+        const cuentas = tipo === 'gasto'
+            ? todasCuentas
+            : todasCuentas.filter(c => c.tipo !== 'tarjeta_credito');
+        selCuenta.innerHTML = cuentas.map(c =>
+            `<option value="${c.id}">${c.nombre}${c.tipo === 'tarjeta_credito' ? ' (TC)' : ''}</option>`).join('');
+        if (cuentaSel) selCuenta.value = cuentaSel;
+
+        etiqueta.textContent = tipo === 'ingreso' ? 'Cuenta donde entra'
+            : esPago ? 'Cuenta de donde sale el pago'
+            : esTransfer ? 'Cuenta de donde sale' : 'Medio de pago';
+
+        grupoDestino.classList.toggle('d-none', !esPago && !esTransfer);
+        grupoCategoria.classList.toggle('d-none', esPago || esTransfer);
+        selDestino.required = esPago || esTransfer;
+        selCategoria.required = !esPago && !esTransfer;
+
+        if (esPago || esTransfer) {
+            // Destino: tarjetas para pago, cuentas de dinero para transferencia.
+            const destinos = esPago
+                ? todasCuentas.filter(c => c.tipo === 'tarjeta_credito')
+                : todasCuentas.filter(c => c.tipo !== 'tarjeta_credito');
+            selDestino.innerHTML = destinos.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+            if (destinoSel) selDestino.value = destinoSel;
+            document.getElementById('etiquetaDestino').textContent = esPago ? 'Tarjeta que pagas' : 'Cuenta donde entra';
+        } else {
+            const categorias = todasCategorias.filter(c => c.tipo === (tipo === 'ingreso' ? 'ingreso' : 'gasto'));
+            selCategoria.innerHTML = categorias.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+            if (categoriaSel) selCategoria.value = categoriaSel;
+        }
+    }
+
+    function abrirNuevo() {
+        document.getElementById('mvId').value = 0;
+        document.getElementById('mvTitulo').textContent = 'Registrar movimiento';
+        document.getElementById('mvFecha').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('mvMonto').value = '';
+        document.getElementById('mvDescripcion').value = '';
+        document.getElementById('tipoGasto').checked = true;
+        cambioTipo();
+        modal.show();
+    }
+
+    function abrirEditar(m) {
+        document.getElementById('mvId').value = m.id;
+        document.getElementById('mvTitulo').textContent = 'Editar movimiento';
+        document.getElementById('mvFecha').value = m.fecha;
+        document.getElementById('mvMonto').value = m.monto;
+        document.getElementById('mvDescripcion').value = m.descripcion || '';
+        document.getElementById(
+            m.tipo === 'ingreso' ? 'tipoIngreso'
+            : m.tipo === 'pago_tarjeta' ? 'tipoPago'
+            : m.tipo === 'transferencia' ? 'tipoTransfer' : 'tipoGasto').checked = true;
+        cambioTipo(m.cuentaId, m.categoriaId, m.cuentaDestinoId);
+        modal.show();
+    }
+
+    if (@(Context.Request.Query["nuevo"] == "true" ? "true" : "false")) {
+        abrirNuevo();
+        const tipoInicial = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["tipo"].ToString()));
+        const radioInicial = tipoInicial === 'pago_tarjeta' ? 'tipoPago'
+            : tipoInicial === 'ingreso' ? 'tipoIngreso'
+            : tipoInicial === 'transferencia' ? 'tipoTransfer' : 'tipoGasto';
+        document.getElementById(radioInicial).checked = true;
+        cambioTipo();
+    }
+</script>
+}
