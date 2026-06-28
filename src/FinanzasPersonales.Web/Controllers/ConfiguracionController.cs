@@ -22,10 +22,15 @@ public class ConfiguracionController : BaseController
         if (!EsAdmin) return Forbid();
         var smtp = _email.ObtenerConfiguracion();
         var emailApi = _email.ObtenerApiConfiguracion();
+        var gmailApi = _email.ObtenerGmailApiConfiguracion();
         var diagnosticoSmtp = _email.ObtenerDiagnostico();
         var whatsApp = _whatsApp.ObtenerConfiguracion();
         return View(new ConfiguracionIntegracionesVm
         {
+            EmailProvider = (_config["Notifications:Email:Provider"] ?? _config["EMAIL_PROVIDER"] ?? "smtp").Trim().ToLowerInvariant(),
+            GmailApiConfigurado = gmailApi.Configurado,
+            GmailApiFromEmail = gmailApi.FromEmail,
+            GmailApiFromName = gmailApi.FromName,
             EmailApiConfigurado = emailApi.Configurado,
             EmailApiProvider = emailApi.Provider,
             EmailApiFromEmail = emailApi.FromEmail,

@@ -611,6 +611,10 @@ public class AsistenteIndexVm
 
 public class ConfiguracionIntegracionesVm
 {
+    public string EmailProvider { get; set; } = "smtp";
+    public bool GmailApiConfigurado { get; set; }
+    public string GmailApiFromEmail { get; set; } = "";
+    public string GmailApiFromName { get; set; } = "Finanzas Personales";
     public bool EmailApiConfigurado { get; set; }
     public string EmailApiProvider { get; set; } = "resend";
     public string EmailApiFromEmail { get; set; } = "";
@@ -697,6 +701,19 @@ public class EmailApiSettings
     public string FromName { get; set; } = "Finanzas Personales";
     public bool Configurado => Provider.Equals("resend", StringComparison.OrdinalIgnoreCase) &&
                                !string.IsNullOrWhiteSpace(ApiKey) &&
+                               !string.IsNullOrWhiteSpace(FromEmail);
+}
+
+public class GmailApiSettings
+{
+    public string ClientId { get; set; } = "";
+    public string ClientSecret { get; set; } = "";
+    public string RefreshToken { get; set; } = "";
+    public string FromEmail { get; set; } = "";
+    public string FromName { get; set; } = "Finanzas Personales";
+    public bool Configurado => !string.IsNullOrWhiteSpace(ClientId) &&
+                               !string.IsNullOrWhiteSpace(ClientSecret) &&
+                               !string.IsNullOrWhiteSpace(RefreshToken) &&
                                !string.IsNullOrWhiteSpace(FromEmail);
 }
 

@@ -29,7 +29,12 @@ public class EmailService
         _logger = logger;
     }
 
-    public bool Configurado => ObtenerConfiguracion().Configurado || ObtenerApiConfiguracion().Configurado;
+    public bool Configurado => ProveedorEnvio() switch
+    {
+        "gmailapi" => ObtenerGmailApiConfiguracion().Configurado,
+        "resend" => ObtenerApiConfiguracion().Configurado,
+        _ => ObtenerConfiguracion().Configurado || ObtenerGmailApiConfiguracion().Configurado || ObtenerApiConfiguracion().Configurado
+    };
 
     public EmailApiSettings ObtenerApiConfiguracion()
     {
@@ -41,6 +46,19 @@ public class EmailService
             FromName = LeerConfig("Notifications:EmailApi:FromName", "EMAIL_API_FROM_NAME") ?? "Finanzas Personales"
         };
     }
+
+    public GmailApiSettings ObtenerGmailApiConfiguracion()
+    {
+        return new GmailApiSettings
+        {
+            ClientId = LeerConfig("Notifications:GmailApi:ClientId", "GMAIL_CLIENT_ID") ?? "",
+            ClientSecret = LeerConfig("Notifications:GmailApi:ClientSecret", "GMAIL_CLIENT_SECRET") ?? "",
+            RefreshToken = LeerConfig("Notifications:GmailApi:RefreshToken", "GMAIL_REFRESH_TOKEN") ?? "",
+            FromEmail = LeerConfig("Notifications:GmailApi:FromEmail", "GMAIL_FROM_EMAIL") ?? "",
+            FromName = LeerConfig("Notifications:GmailApi:FromName", "GMAIL_FROM_NAME") ?? "Finanzas Personales"
+        };
+    }
+
 
     public SmtpSettings ObtenerConfiguracion()
     {
@@ -61,12 +79,22 @@ public class EmailService
     {
         var smtp = ObtenerConfiguracion();
         var api = ObtenerApiConfiguracion();
+        var gmail = ObtenerGmailApiConfiguracion();
+        var proveedor = ProveedorEnvio();
         return new SmtpDiagnostico
         {
             TieneConfiguracionBaseDatos = false,
             PasswordCifradaEnBaseDatos = false,
             PasswordDescifrable = true,
-            Mensaje = smtp.Configurado
+            Mensaje = proveedor == "gmailapi" && gmail.Configurado
+                ? "Gmail API configurado desde variables de entorno. Envia por Gmail usando HTTPS, sin SMTP ni DataProtection."
+                : proveedor == "gmailapi"
+                    ? "Proveedor configurado como Gmail API, pero faltan variables GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN y GMAIL_FROM_EMAIL."
+                    : proveedor == "resend" && api.Configurado
+                ? "Correo API Resend configurado desde variables de entorno. No depende de DataProtection ni de la base de datos."
+                : proveedor == "resend"
+                    ? "Proveedor configurado como Resend, pero faltan variables EMAIL_API_KEY y EMAIL_API_FROM_EMAIL."
+                    : smtp.Configurado
                 ? "Correo SMTP configurado desde variables de entorno. No depende de DataProtection ni de la base de datos."
                 : api.Configurado
                     ? "Correo API configurado desde variables de entorno. No depende de DataProtection ni de la base de datos."
@@ -100,9 +128,31 @@ public class EmailService
 
     public async Task<bool> EnviarAsync(string destinatario, string asunto, string html)
     {
+        if (ProveedorEnvio() == "gmailapi")
+        {
+            var gmail = ObtenerGmailApiConfiguracion();
+            if (gmail.Configurado)
+                return await EnviarPorGmailApiAsync(gmail, destinatario, asunto, html);
+            _logger.LogWarning("Proveedor Gmail API seleccionado, pero no esta configurado.");
+            return false;
+        }
+
+        if (ProveedorEnvio() == "resend")
+        {
+            var apiSettings = ObtenerApiConfiguracion();
+            if (apiSettings.Configurado)
+                return await EnviarPorApiAsync(apiSettings, destinatario, asunto, html);
+            _logger.LogWarning("Proveedor de correo Resend seleccionado, pero no esta configurado.");
+            return false;
+        }
+
         var settings = ObtenerConfiguracion();
         if (settings.Configurado)
             return await EnviarPorSmtpAsync(settings, destinatario, asunto, html);
+
+        var gmailSettings = ObtenerGmailApiConfiguracion();
+        if (gmailSettings.Configurado)
+            return await EnviarPorGmailApiAsync(gmailSettings, destinatario, asunto, html);
 
         var api = ObtenerApiConfiguracion();
         if (api.Configurado)
@@ -110,6 +160,79 @@ public class EmailService
 
         _logger.LogWarning("Correo no configurado. No se envio el correo '{Subject}' a {Email}.", asunto, destinatario);
         return false;
+    }
+
+    private async Task<bool> EnviarPorGmailApiAsync(GmailApiSettings settings, string destinatario, string asunto, string html)
+    {
+        var token = await ObtenerAccessTokenGmailAsync(settings);
+        var raw = CrearMensajeGmailRaw(settings, destinatario, asunto, html);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        req.Content = new StringContent(JsonSerializer.Serialize(new { raw }), Encoding.UTF8, "application/json");
+
+        using var res = await _http.SendAsync(req);
+        var body = await res.Content.ReadAsStringAsync();
+        if (res.IsSuccessStatusCode)
+            return true;
+
+        _logger.LogError("Error Gmail API enviando '{Subject}' a {Email}. Status={Status}. Body={Body}",
+            asunto, destinatario, (int)res.StatusCode, body);
+        throw new InvalidOperationException($"No se pudo enviar por Gmail API. HTTP {(int)res.StatusCode}: {body}");
+    }
+
+    private async Task<string> ObtenerAccessTokenGmailAsync(GmailApiSettings settings)
+    {
+        using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["client_id"] = settings.ClientId,
+            ["client_secret"] = settings.ClientSecret,
+            ["refresh_token"] = settings.RefreshToken,
+            ["grant_type"] = "refresh_token"
+        });
+        using var res = await _http.PostAsync("https://oauth2.googleapis.com/token", content);
+        var body = await res.Content.ReadAsStringAsync();
+        if (!res.IsSuccessStatusCode)
+        {
+            _logger.LogError("Error obteniendo access token Gmail API. Status={Status}. Body={Body}", (int)res.StatusCode, body);
+            throw new InvalidOperationException($"No se pudo obtener token de Gmail API. HTTP {(int)res.StatusCode}: {body}");
+        }
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.GetProperty("access_token").GetString() ?? throw new InvalidOperationException("Google no devolvio access_token.");
+    }
+
+    private static string CrearMensajeGmailRaw(GmailApiSettings settings, string destinatario, string asunto, string html)
+    {
+        static string Header(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+        var from = string.IsNullOrWhiteSpace(settings.FromName)
+            ? settings.FromEmail
+            : $"{settings.FromName} <{settings.FromEmail}>";
+        var mime = new StringBuilder()
+            .Append("From: ").AppendLine(from)
+            .Append("To: ").AppendLine(destinatario)
+            .Append("Subject: =?UTF-8?B?").Append(Header(asunto)).AppendLine("?=")
+            .AppendLine("MIME-Version: 1.0")
+            .AppendLine("Content-Type: text/html; charset=UTF-8")
+            .AppendLine("Content-Transfer-Encoding: 8bit")
+            .AppendLine()
+            .AppendLine(html)
+            .ToString();
+
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(mime))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    private string ProveedorEnvio()
+    {
+        var proveedor = LeerConfig("Notifications:Email:Provider", "EMAIL_PROVIDER")?.Trim().ToLowerInvariant();
+        return proveedor switch
+        {
+            "gmailapi" or "gmail-api" or "gmail_api" => "gmailapi",
+            "resend" or "api" => "resend",
+            _ => "smtp"
+        };
     }
 
     private async Task<bool> EnviarPorSmtpAsync(SmtpSettings settings, string destinatario, string asunto, string html)

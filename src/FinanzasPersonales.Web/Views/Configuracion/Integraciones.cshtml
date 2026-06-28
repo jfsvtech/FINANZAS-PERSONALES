@@ -15,13 +15,28 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-3">
                     <span class="integration-icon"><i class="bi bi-server"></i></span>
-                    <span class="badge @(Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.SmtpConfigurado ? "Variables SMTP activas" : "Variables pendientes")</span>
+                    <span class="badge @(Model.EmailProvider == "gmailapi" ? (Model.GmailApiConfigurado ? "text-bg-success" : "text-bg-warning") : Model.EmailProvider == "resend" ? (Model.EmailApiConfigurado ? "text-bg-success" : "text-bg-warning") : (Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning"))">
+                        @(Model.EmailProvider == "gmailapi" ? (Model.GmailApiConfigurado ? "Gmail API activo" : "Gmail API pendiente") : Model.EmailProvider == "resend" ? (Model.EmailApiConfigurado ? "Resend activo" : "Resend pendiente") : (Model.SmtpConfigurado ? "SMTP activo" : "SMTP pendiente"))
+                    </span>
                 </div>
                 <h5>Correo por variables de entorno</h5>
                 <p class="text-muted small">
                     En produccion no se guarda la clave SMTP en la base de datos. Configura estas variables en Railway y reinicia el servicio.
                 </p>
+                <div class="alert alert-light border small">
+                    Proveedor actual: <strong>@(Model.EmailProvider == "gmailapi" ? "Gmail API HTTPS" : Model.EmailProvider == "resend" ? "Resend API HTTPS" : "SMTP")</strong>.
+                    Si quieres usar solo Gmail en Railway, usa <code>EMAIL_PROVIDER=gmailapi</code>.
+                </div>
+                <div class="config-code mb-3">
+                    <code>EMAIL_PROVIDER=gmailapi</code>
+                    <code>GMAIL_CLIENT_ID=cliente-oauth.apps.googleusercontent.com</code>
+                    <code>GMAIL_CLIENT_SECRET=secreto-oauth</code>
+                    <code>GMAIL_REFRESH_TOKEN=refresh-token</code>
+                    <code>GMAIL_FROM_EMAIL=tu-correo@gmail.com</code>
+                    <code>GMAIL_FROM_NAME=Finanzas Personales</code>
+                </div>
                 <div class="config-code">
+                    <code>EMAIL_PROVIDER=smtp</code>
                     <code>Notifications__Smtp__Host=smtp.gmail.com</code>
                     <code>Notifications__Smtp__Port=587</code>
                     <code>Notifications__Smtp__User=tu-correo@gmail.com</code>
@@ -31,6 +46,13 @@
                 </div>
                 <div class="alert alert-light border small mt-3 mb-0">
                     Tambien se aceptan nombres cortos: <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM</code>, <code>SMTP_ENABLE_SSL</code>.
+                </div>
+                <div class="config-code mt-3">
+                    <code>EMAIL_PROVIDER=resend</code>
+                    <code>EMAIL_API_PROVIDER=resend</code>
+                    <code>EMAIL_API_KEY=re_xxxxxxxxx</code>
+                    <code>EMAIL_API_FROM_EMAIL=notificaciones@tudominio.com</code>
+                    <code>EMAIL_API_FROM_NAME=Finanzas Personales</code>
                 </div>
             </div>
         </div>
