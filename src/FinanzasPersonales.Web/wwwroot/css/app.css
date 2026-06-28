@@ -142,6 +142,11 @@ a { color:var(--purple); }
 .subscription-history .table { font-size:.82rem; }
 .permission-chips { display:flex;flex-wrap:wrap;gap:.25rem;max-width:310px; }
 .permission-chips span { padding:.16rem .42rem;border-radius:999px;color:var(--purple);background:var(--purple-tint);font-size:.65rem;font-weight:700; }
+.users-control-table td { vertical-align:middle; }
+.user-row-main { display:flex;align-items:center;gap:.65rem;min-width:220px; }
+.user-avatar-sm { width:34px;height:34px;border-radius:10px;font-size:.85rem;flex:0 0 auto; }
+.user-detail-panel { background:linear-gradient(135deg,var(--surface),var(--surface-2)); }
+.user-detail-panel h6 { color:var(--purple);font-weight:800; }
 .permissions-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.55rem; }
 .permissions-grid label { display:flex;gap:.55rem;align-items:flex-start;padding:.65rem;border:1px solid var(--border);border-radius:11px;background:var(--surface-2);cursor:pointer; }
 .permissions-grid input { margin-top:.2rem;accent-color:var(--purple); }

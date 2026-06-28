@@ -25,11 +25,11 @@ public class UsuariosController : BaseController
         _traduccion = traduccion;
     }
 
-    public IActionResult Index()
+    public IActionResult Index(bool incluirInactivos = false)
     {
         if (!EsAdmin) return Forbid();
         using var con = _db.Abrir();
-        var usuarios = con.Query<Usuario>(
+        var todos = con.Query<Usuario>(
             @"SELECT id, nombre_usuario AS NombreUsuario, email, nombre_completo AS NombreCompleto,
                      es_admin AS EsAdmin, activo, email_confirmado AS EmailConfirmado,
                      intentos_fallidos AS IntentosFallidos, bloqueado_hasta AS BloqueadoHasta,
@@ -45,14 +45,27 @@ public class UsuariosController : BaseController
                      idioma, moneda_codigo AS MonedaCodigo, zona_horaria AS ZonaHoraria,
                      COALESCE((SELECT SUM(p.monto) FROM usuario_pagos_suscripcion p WHERE p.usuario_id=usuarios.id),0) AS TotalPagadoSuscripcion,
                      (SELECT MAX(p.fecha_pago) FROM usuario_pagos_suscripcion p WHERE p.usuario_id=usuarios.id) AS UltimoPagoSuscripcion
-              FROM usuarios ORDER BY nombre_completo").ToList();
+              FROM usuarios ORDER BY activo DESC, nombre_completo").ToList();
+        var usuarios = incluirInactivos
+            ? todos
+            : todos.Where(x => x.Activo).ToList();
+        var idsVisibles = usuarios.Select(x => x.Id).ToHashSet();
         var pagos = con.Query<PagoSuscripcion>(
             @"SELECT id, usuario_id AS UsuarioId, fecha_pago AS FechaPago, monto,
                      COALESCE(moneda_codigo,'COP') AS MonedaCodigo,
                      periodo_cubierto AS PeriodoCubierto, metodo, referencia, notas, creado_en AS CreadoEn
               FROM usuario_pagos_suscripcion
-              ORDER BY fecha_pago DESC, id DESC").ToList();
-        return View(new UsuariosAdminVm { Usuarios = usuarios, Pagos = pagos, Monedas = _preferencias.Monedas(), Idiomas = _preferencias.Idiomas() });
+              ORDER BY fecha_pago DESC, id DESC").Where(x => idsVisibles.Contains(x.UsuarioId)).ToList();
+        return View(new UsuariosAdminVm
+        {
+            Usuarios = usuarios,
+            Pagos = pagos,
+            Monedas = _preferencias.Monedas(),
+            Idiomas = _preferencias.Idiomas(),
+            IncluirInactivos = incluirInactivos,
+            InactivosOcultos = todos.Count(x => !x.Activo),
+            TotalClientes = todos.Count
+        });
     }
 
     [HttpPost]
@@ -343,6 +356,78 @@ public class UsuariosController : BaseController
         var envio = await EnviarConfirmacion(con, u.Id, u.Email, u.NombreCompleto);
         TempData[envio.Ok ? "Ok" : "Error"] = envio.Message;
         return RedirectToAction("Index");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult Eliminar(int id)
+    {
+        if (!EsAdmin) return Forbid();
+        if (id == UsuarioId)
+        {
+            TempData["Error"] = "No puedes eliminar tu propio usuario administrador.";
+            return RedirectToAction("Index", new { incluirInactivos = true });
+        }
+
+        using var con = _db.Abrir();
+        var usuario = con.QueryFirstOrDefault<Usuario>(
+            "SELECT id, email, nombre_completo AS NombreCompleto, es_admin AS EsAdmin FROM usuarios WHERE id=@id",
+            new { id });
+        if (usuario == null)
+        {
+            TempData["Error"] = "Usuario no encontrado.";
+            return RedirectToAction("Index", new { incluirInactivos = true });
+        }
+        if (usuario.EsAdmin)
+        {
+            TempData["Error"] = "No se permite eliminar usuarios administradores desde esta accion.";
+            return RedirectToAction("Index", new { incluirInactivos = true });
+        }
+
+        using var tx = con.BeginTransaction();
+        try
+        {
+            var tablas = new[]
+            {
+                "usuario_tokens",
+                "usuario_pagos_suscripcion",
+                "configuraciones_usuario",
+                "aportes_meta",
+                "metas_ahorro",
+                "presupuestos",
+                "movimientos",
+                "gastos_periodicos",
+                "prestamo_pagos",
+                "prestamos",
+                "personas",
+                "inversion_valoraciones",
+                "inversion_movimientos",
+                "inversiones",
+                "tipos_inversion",
+                "categorias",
+                "cuentas"
+            };
+            foreach (var tabla in tablas)
+            {
+                con.Execute($"""
+                    DO $$
+                    BEGIN
+                      IF to_regclass('public.{tabla}') IS NOT NULL THEN
+                        DELETE FROM {tabla} WHERE usuario_id = {id};
+                      END IF;
+                    END $$;
+                    """, transaction: tx);
+            }
+            con.Execute("DELETE FROM usuarios WHERE id=@id", new { id }, tx);
+            tx.Commit();
+            TempData["Ok"] = $"Usuario de prueba '{usuario.Email}' eliminado con sus datos asociados.";
+        }
+        catch (Exception ex)
+        {
+            tx.Rollback();
+            TempData["Error"] = "No se pudo eliminar el usuario: " + ex.Message;
+        }
+        return RedirectToAction("Index", new { incluirInactivos = true });
     }
 
     private async Task<EmailEnvioResultado> EnviarConfirmacion(System.Data.IDbConnection con, int usuarioId, string email, string nombre)

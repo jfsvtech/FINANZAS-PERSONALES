@@ -87,6 +87,9 @@ public class UsuariosAdminVm
     public List<PagoSuscripcion> Pagos { get; set; } = new();
     public List<Moneda> Monedas { get; set; } = new();
     public List<IdiomaDisponible> Idiomas { get; set; } = new();
+    public bool IncluirInactivos { get; set; }
+    public int InactivosOcultos { get; set; }
+    public int TotalClientes { get; set; }
     public decimal IngresoMensualEsperado => Usuarios.Where(x => x.Activo && x.EstadoSuscripcion == "activa").Sum(x => x.ValorSuscripcion);
     public decimal PagadoEsteMes => Pagos.Where(x => x.FechaPago.Year == DateTime.Today.Year && x.FechaPago.Month == DateTime.Today.Month).Sum(x => x.Monto);
     public int ClientesActivos => Usuarios.Count(x => x.Activo && x.EstadoSuscripcion == "activa");
