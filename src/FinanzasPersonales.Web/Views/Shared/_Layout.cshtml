@@ -223,36 +223,59 @@ function initPasswordToggles(){
     });
 }
 function initNumberFormatting(){
-    const moneyNames=['monto','capital','valor','saldo','precio','pago','abono'];
+    const moneyNames=['monto','capital','valor','saldo','precio','pago','abono','cuota','suscripcion','aporte','retiro','rendimiento','costo','ingreso','gasto','deuda','interes','inversion','objetivo','presupuesto'];
     const shouldFormat=input=>{
         const name=(input.name||input.id||'').toLowerCase();
-        if(!name || name.includes('tasa') || name.includes('porcentaje') || name.includes('dia') || name.includes('dias') || name.includes('telefono') || name.includes('port'))return false;
+        if(!name || name.includes('tasa') || name.includes('porcentaje') || name.includes('dia') || name.includes('dias') || name.includes('telefono') || name.includes('port') || name.includes('fecha') || name.includes('email'))return false;
         return moneyNames.some(x=>name.includes(x));
     };
     const clean=value=>{
         value=(value||'').toString().trim();
         if(!value)return '';
-        const normalized=value.replace(/\s/g,'').replace(/\./g,'').replace(',', '.');
-        const n=Number(normalized);
-        return Number.isFinite(n)?String(Math.round(n)):value.replace(/[^\d-]/g,'');
+        const negativo=value.includes('-')?'-':'';
+        const normal=value.replace(/\s/g,'').replace(/[^\d,.-]/g,'');
+        const decimalIndex=normal.lastIndexOf(',');
+        const enteroFuente=decimalIndex>=0?normal.slice(0,decimalIndex):normal;
+        const decimalFuente=decimalIndex>=0?normal.slice(decimalIndex+1):'';
+        const entero=enteroFuente.replace(/[^\d]/g,'');
+        const decimal=decimalFuente.replace(/[^\d]/g,'').slice(0,2);
+        if(!entero && !decimal)return '';
+        return negativo+(entero||'0')+(decimalIndex>=0?','+decimal:'');
     };
     const format=value=>{
         const raw=clean(value);
         if(raw==='' || raw==='-')return raw;
-        const n=Number(raw);
-        return Number.isFinite(n)?n.toLocaleString('es-CO'):value;
+        const negativo=raw.startsWith('-')?'-':'';
+        const sinSigno=raw.replace('-','');
+        const partes=sinSigno.split(',');
+        const entero=partes[0]||'0';
+        const decimal=partes.length>1?partes[1]:'';
+        const enteroFormateado=Number(entero).toLocaleString('es-CO');
+        return negativo+enteroFormateado+(partes.length>1?','+decimal:'');
     };
-    document.querySelectorAll('input[type="number"]:not([data-number-format-ready])').forEach(input=>{
+    const formatLive=input=>{
+        const old=input.value;
+        const cursor=input.selectionStart ?? old.length;
+        const digitsBefore=old.slice(0,cursor).replace(/[^\d]/g,'').length;
+        input.value=format(old);
+        let seen=0,next=input.value.length;
+        for(let i=0;i<input.value.length;i++){
+            if(/\d/.test(input.value[i]))seen++;
+            if(seen>=digitsBefore){next=i+1;break;}
+        }
+        input.setSelectionRange(next,next);
+    };
+    document.querySelectorAll('input:not([data-number-format-ready])').forEach(input=>{
+        if(input.type!=='number' && input.type!=='text')return;
         if(!shouldFormat(input))return;
         input.dataset.numberFormatReady='true';
-        input.dataset.rawType='number';
         input.type='text';
         input.inputMode='numeric';
         input.autocomplete=input.autocomplete||'off';
         input.value=format(input.value);
-        input.addEventListener('focus',()=>{input.value=clean(input.value);});
+        input.addEventListener('input',()=>formatLive(input));
+        input.addEventListener('paste',()=>setTimeout(()=>formatLive(input)));
         input.addEventListener('blur',()=>{input.value=format(input.value);});
-        input.addEventListener('input',()=>{input.value=input.value.replace(/[^\d.,-]/g,'');});
     });
     document.querySelectorAll('form').forEach(form=>{
         if(form.dataset.numberSubmitReady)return;
