@@ -91,11 +91,11 @@ public class ConfiguracionController : BaseController
             var enviado = await _email.EnviarPruebaAsync(emailPrueba);
             TempData[enviado ? "Ok" : "Error"] = enviado
                 ? "Correo de prueba enviado correctamente."
-                : "SMTP no esta configurado completamente.";
+                : "El correo no esta configurado completamente.";
         }
         catch (Exception ex)
         {
-            TempData["Error"] = "No se pudo enviar la prueba SMTP: " + ex.Message;
+            TempData["Error"] = "No se pudo enviar la prueba de correo: " + ex.Message;
         }
         return RedirectToAction("Integraciones");
     }

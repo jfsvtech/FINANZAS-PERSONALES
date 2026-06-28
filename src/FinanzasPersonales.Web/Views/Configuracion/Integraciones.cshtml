@@ -112,20 +112,21 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-3">
                     <span class="integration-icon"><i class="bi bi-send-check"></i></span>
-                    <span class="badge @(Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning")">Prueba SMTP</span>
+                    <span class="badge @((Model.SmtpConfigurado || Model.GmailApiConfigurado || Model.EmailApiConfigurado) ? "text-bg-success" : "text-bg-warning")">Prueba correo</span>
                 </div>
                 <h5>Enviar correo de prueba</h5>
-                <p class="text-muted small">Despues de configurar variables en Railway y reiniciar, envia una prueba para confirmar que el servidor acepta la cuenta y la contrasena.</p>
+                <p class="text-muted small">Despues de configurar variables en Railway y reiniciar, envia una prueba para confirmar que el proveedor de correo funciona.</p>
                 <div class="alert alert-warning py-2 small">
                     Si Gmail responde con error, revisa que no estes usando tu contrasena normal. Debe ser una contrasena de aplicacion de 16 caracteres generada por Google.
+                    Para Gmail API, verifica que Gmail API este habilitada en el proyecto de Google Cloud.
                 </div>
                 <form method="post" asp-action="ProbarSmtp">
                     @Html.AntiForgeryToken()
                     <div class="mb-3">
                         <label class="form-label">Correo destino</label>
-                        <input name="emailPrueba" type="email" class="form-control" value="@Model.SmtpUser" placeholder="tu-correo@dominio.com" required />
+                        <input name="emailPrueba" type="email" class="form-control" value="@(Model.GmailApiConfigurado ? Model.GmailApiFromEmail : Model.SmtpUser)" placeholder="tu-correo@dominio.com" required />
                     </div>
-                    <button class="btn btn-premium w-100" @(Model.SmtpConfigurado ? "" : "disabled")><i class="bi bi-envelope-check"></i> Enviar prueba</button>
+                    <button class="btn btn-premium w-100" @((Model.SmtpConfigurado || Model.GmailApiConfigurado || Model.EmailApiConfigurado) ? "" : "disabled")><i class="bi bi-envelope-check"></i> Enviar prueba</button>
                 </form>
 
                 <hr />
