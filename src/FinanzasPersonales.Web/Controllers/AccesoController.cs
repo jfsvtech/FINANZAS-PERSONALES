@@ -46,7 +46,7 @@ public class AccesoController : Controller
     [HttpPost]
     [EnableRateLimiting("auth")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Login(string email, string clave)
+    public async Task<IActionResult> Login(string email, string clave, bool recordarme = false)
     {
         email = NormalizarEmail(email);
         using var con = _db.Abrir();
@@ -117,9 +117,9 @@ public class AccesoController : Controller
         await HttpContext.SignInAsync(new ClaimsPrincipal(identidad),
             new AuthenticationProperties
             {
-                IsPersistent = false,
+                IsPersistent = recordarme,
                 IssuedUtc = DateTimeOffset.UtcNow,
-                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(8)
+                ExpiresUtc = DateTimeOffset.UtcNow.Add(recordarme ? TimeSpan.FromDays(30) : TimeSpan.FromHours(8))
             });
 
         return RedirectToAction("Index", "Inicio");

@@ -26,7 +26,9 @@
 </div>
 
 <div class="text-muted small mb-3">
-    Prestado el <strong>@p.Fecha.ToString("dd MMM yyyy")</strong> al <strong>@p.TasaMensual.ToString("0.##")% mensual</strong>
+    Prestado el <strong>@p.Fecha.ToString("dd MMM yyyy")</strong>
+    @if (p.TasaMensual <= 0) { <span> &bull; <strong>sin intereses</strong></span> }
+    else { <span> al <strong>@p.TasaMensual.ToString("0.##")% mensual</strong></span> }
     @if (p.DiaPagoInteres.HasValue) { <span> &bull; interes pactado el dia <strong>@p.DiaPagoInteres</strong> de cada mes</span> }
     @if (p.FechaPagoCapital.HasValue) { <span> &bull; capital pactado para el <strong>@p.FechaPagoCapital.Value.ToString("dd MMM yyyy")</strong></span> }
     @if (!string.IsNullOrWhiteSpace(p.Notas)) { <br /> <i class="bi bi-sticky"></i> @p.Notas }
@@ -46,15 +48,15 @@
         <div class="small text-muted">Saldo capital</div>
         <div class="fw-bold text-primary fs-6">@M(p.SaldoCapital, Model.MonedaBase)</div>
     </div></div></div>
-    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+    <div class="col-6 col-md-2 @(p.TasaMensual <= 0 ? "d-none" : "")"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
         <div class="small text-muted">Interes devengado</div>
         <div class="fw-bold">@M(p.InteresDevengado, Model.MonedaBase)</div>
     </div></div></div>
-    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+    <div class="col-6 col-md-2 @(p.TasaMensual <= 0 ? "d-none" : "")"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
         <div class="small text-muted">Interes pagado</div>
         <div class="fw-bold text-success">@M(p.InteresPagado, Model.MonedaBase)</div>
     </div></div></div>
-    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+    <div class="col-6 col-md-2 @(p.TasaMensual <= 0 ? "d-none" : "")"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
         <div class="small text-muted">Interes pendiente</div>
         <div class="fw-bold @(p.InteresPendiente > 0 ? "text-warning" : "text-success")">@M(p.InteresPendiente, Model.MonedaBase)</div>
     </div></div></div>
@@ -64,8 +66,15 @@
 {
     <div class="alert alert-light border shadow-sm small">
         <i class="bi bi-calculator"></i> Con el saldo actual de <strong>@M(p.SaldoCapital, Model.MonedaBase)</strong>,
-        el interes corre a <strong>@M(p.InteresMensualActual, Model.MonedaBase)</strong> por mes
-        (recalculado automaticamente despues de cada abono a capital).
+        @if (p.TasaMensual <= 0)
+        {
+            <span>este prestamo no genera intereses; registra unicamente abonos a capital hasta la fecha final pactada.</span>
+        }
+        else
+        {
+            <span>el interes corre a <strong>@M(p.InteresMensualActual, Model.MonedaBase)</strong> por mes
+            (recalculado automaticamente despues de cada abono a capital).</span>
+        }
     </div>
 }
 
@@ -78,9 +87,12 @@
                 <input type="hidden" name="prestamoId" value="@p.Id" />
                 <div class="mb-3">
                     <div class="btn-group w-100" role="group">
-                        <input type="radio" class="btn-check" name="tipo" id="tipoInteres" value="pago_interes" checked onchange="sugerirMonto()" />
-                        <label class="btn btn-outline-warning" for="tipoInteres">Pago de interes</label>
-                        <input type="radio" class="btn-check" name="tipo" id="tipoAbono" value="abono_capital" onchange="sugerirMonto()" />
+                        @if (p.TasaMensual > 0)
+                        {
+                            <input type="radio" class="btn-check" name="tipo" id="tipoInteres" value="pago_interes" checked onchange="sugerirMonto()" />
+                            <label class="btn btn-outline-warning" for="tipoInteres">Pago de interes</label>
+                        }
+                        <input type="radio" class="btn-check" name="tipo" id="tipoAbono" value="abono_capital" @(p.TasaMensual <= 0 ? "checked" : "") onchange="sugerirMonto()" />
                         <label class="btn btn-outline-success" for="tipoAbono">Abono a capital</label>
                     </div>
                 </div>
@@ -203,14 +215,20 @@
                     </div>
                 </div>
                 <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <label class="form-label">Interes mensual (%)</label>
-                        <input type="number" name="tasaMensual" class="form-control" min="0" max="100" step="0.1" required
-                               value="@p.TasaMensual.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)" />
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="edSinInteres" @(p.TasaMensual <= 0 ? "checked" : "") onchange="toggleEditarInteres()" />
+                            <label class="form-check-label" for="edSinInteres">Prestamo sin intereses</label>
+                        </div>
                     </div>
                     <div class="col-6">
+                        <label class="form-label">Interes mensual (%)</label>
+                        <input type="number" name="tasaMensual" id="edTasa" class="form-control" min="0" max="100" step="0.1" required
+                               value="@p.TasaMensual.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)" />
+                    </div>
+                    <div class="col-6 bloque-editar-interes">
                         <label class="form-label">Dia de pago de interes</label>
-                        <input type="number" name="diaPagoInteres" class="form-control" min="1" max="31" value="@p.DiaPagoInteres" />
+                        <input type="number" name="diaPagoInteres" id="edDiaInteres" class="form-control" min="1" max="31" value="@p.DiaPagoInteres" />
                     </div>
                 </div>
                 <div class="mb-3">
@@ -232,8 +250,8 @@
 
 @section Scripts {
 <script>
-    const interesPendiente = @p.InteresPendiente;
-    const saldoCapital = @p.SaldoCapital;
+    const interesPendiente = @p.InteresPendiente.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    const saldoCapital = @p.SaldoCapital.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     // Sugiere el monto segun el tipo: interes pendiente o saldo del capital.
     function sugerirMonto() {
@@ -243,6 +261,18 @@
     sugerirMonto();
     const accionCalendario=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["accion"].ToString()));
     if(accionCalendario==='capital'){document.getElementById('tipoAbono').checked=true;sugerirMonto();document.getElementById('registrarPago').scrollIntoView({behavior:'smooth',block:'center'});}
-    else if(accionCalendario==='interes'){document.getElementById('tipoInteres').checked=true;sugerirMonto();document.getElementById('registrarPago').scrollIntoView({behavior:'smooth',block:'center'});}
+    else if(accionCalendario==='interes' && document.getElementById('tipoInteres')){document.getElementById('tipoInteres').checked=true;sugerirMonto();document.getElementById('registrarPago').scrollIntoView({behavior:'smooth',block:'center'});}
+    function toggleEditarInteres() {
+        const sinInteres = document.getElementById('edSinInteres').checked;
+        const tasa = document.getElementById('edTasa');
+        const dia = document.getElementById('edDiaInteres');
+        document.querySelectorAll('.bloque-editar-interes').forEach(x => x.classList.toggle('d-none', sinInteres));
+        if (sinInteres) {
+            tasa.value = 0;
+            dia.value = '';
+        }
+        tasa.readOnly = sinInteres;
+    }
+    toggleEditarInteres();
 </script>
 }

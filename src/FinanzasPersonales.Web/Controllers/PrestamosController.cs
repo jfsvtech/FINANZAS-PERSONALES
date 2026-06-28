@@ -112,6 +112,13 @@ public class PrestamosController : BaseController
             TempData["Error"] = "Capital y tasa deben ser validos.";
             return RedirectToAction("Index");
         }
+        if (tasaMensual == 0)
+            diaPagoInteres = null;
+        else if (diaPagoInteres is < 1 or > 31)
+        {
+            TempData["Error"] = "El dia de pago de interes debe estar entre 1 y 31.";
+            return RedirectToAction(id == 0 ? "Index" : "Detalle", id == 0 ? null : new { id });
+        }
 
         using var con = _db.Abrir();
         var personaMia = con.ExecuteScalar<int>(
@@ -159,6 +166,11 @@ public class PrestamosController : BaseController
         using var con = _db.Abrir();
         var prestamo = ConsultarPrestamos(con, prestamoId).FirstOrDefault();
         if (prestamo == null) return NotFound();
+        if (tipo == "pago_interes" && prestamo.TasaMensual <= 0)
+        {
+            TempData["Error"] = "Este prestamo no tiene intereses; solo permite abonos a capital.";
+            return RedirectToAction("Detalle", new { id = prestamoId });
+        }
 
         if (fecha.Date < prestamo.Fecha.Date)
         {

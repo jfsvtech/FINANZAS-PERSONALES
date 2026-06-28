@@ -84,15 +84,15 @@
 <div class="row g-2 mb-3 text-center">
     <div class="col-4"><div class="card border-0 shadow-sm"><div class="card-body py-2">
         <div class="small text-muted">Capital prestado (activos)</div>
-        <div class="fw-bold">@Model.TotalPrestado.ToString("C0")</div>
+        <div class="fw-bold">@M(Model.TotalPrestado, Model.MonedaBase)</div>
     </div></div></div>
     <div class="col-4"><div class="card border-0 shadow-sm"><div class="card-body py-2">
         <div class="small text-muted">Saldo de capital por cobrar</div>
-        <div class="fw-bold text-primary">@Model.TotalSaldoCapital.ToString("C0")</div>
+        <div class="fw-bold text-primary">@M(Model.TotalSaldoCapital, Model.MonedaBase)</div>
     </div></div></div>
     <div class="col-4"><div class="card border-0 shadow-sm"><div class="card-body py-2">
         <div class="small text-muted">Interes pendiente</div>
-        <div class="fw-bold text-warning">@Model.TotalInteresPendiente.ToString("C0")</div>
+        <div class="fw-bold text-warning">@M(Model.TotalInteresPendiente, Model.MonedaBase)</div>
     </div></div></div>
 </div>
 
@@ -115,8 +115,8 @@
                     <td class="d-none d-md-table-cell">@p.Fecha.ToString("dd MMM yyyy")</td>
                     <td class="text-end">@M(p.CapitalOriginal ?? p.Capital, p.MonedaCodigo)@if(p.MonedaCodigo != Model.MonedaBase){<small class="d-block text-muted">@M(p.Capital, Model.MonedaBase)</small>}</td>
                     <td class="text-end fw-bold">@M(p.SaldoCapital, Model.MonedaBase)</td>
-                    <td class="d-none d-md-table-cell text-end">@p.TasaMensual.ToString("0.##")%</td>
-                    <td class="text-end fw-bold @(p.InteresPendiente > 0 ? "text-warning" : "text-success")">@p.InteresPendiente.ToString("C0")</td>
+                    <td class="d-none d-md-table-cell text-end">@(p.TasaMensual <= 0 ? "Sin interes" : p.TasaMensual.ToString("0.##") + "%")</td>
+                    <td class="text-end fw-bold @(p.InteresPendiente > 0 ? "text-warning" : "text-success")">@M(p.InteresPendiente, Model.MonedaBase)</td>
                     <td>
                         @if (p.Estado == "pagado") { <span class="badge text-bg-success">Pagado</span> }
                         else { <span class="badge text-bg-primary">Activo</span> }
@@ -181,18 +181,25 @@
                     </div>
                 </div>
                 <div class="row g-2 mb-3">
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="prSinInteres" onchange="toggleInteresPrestamo()" />
+                            <label class="form-check-label" for="prSinInteres">Prestamo sin intereses</label>
+                            <div class="form-text">No se solicitara dia de pago de interes; solo define la fecha final del capital.</div>
+                        </div>
+                    </div>
                     <div class="col-6">
                         <label class="form-label">Interes mensual (%)</label>
                         <input type="number" name="tasaMensual" id="prTasa" class="form-control" min="0" max="100"
                                step="0.1" inputmode="decimal" required oninput="calcularInteres()" />
                     </div>
-                    <div class="col-6">
+                    <div class="col-6 bloque-interes-prestamo">
                         <label class="form-label">Interes mensual ($)</label>
                         <input id="prInteresCalc" class="form-control bg-light" readonly tabindex="-1" />
                     </div>
                 </div>
                 <div class="row g-2 mb-3">
-                    <div class="col-6">
+                    <div class="col-6 bloque-interes-prestamo">
                         <label class="form-label">Dia de pago de interes</label>
                         <input type="number" name="diaPagoInteres" class="form-control" min="1" max="31"
                                inputmode="numeric" placeholder="Ej: 15" />
@@ -225,10 +232,24 @@
         modal.show();
     }
     function calcularInteres() {
-        const capital = parseFloat(document.getElementById('prCapital').value) || 0;
+        const leerNumero = value => Number((value || '').toString().replace(/\./g, '').replace(',', '.')) || 0;
+        const capital = leerNumero(document.getElementById('prCapital').value);
         const tasa = parseFloat(document.getElementById('prTasa').value) || 0;
         document.getElementById('prInteresCalc').value =
             '$ ' + Math.round(capital * tasa / 100).toLocaleString('es-CO');
+    }
+    function toggleInteresPrestamo() {
+        const sinInteres = document.getElementById('prSinInteres').checked;
+        const tasa = document.getElementById('prTasa');
+        const dia = document.querySelector('[name="diaPagoInteres"]');
+        document.querySelectorAll('.bloque-interes-prestamo').forEach(x => x.classList.toggle('d-none', sinInteres));
+        if (sinInteres) {
+            tasa.value = 0;
+            dia.value = '';
+            dia.removeAttribute('required');
+        }
+        tasa.readOnly = sinInteres;
+        calcularInteres();
     }
 
     if (@(Context.Request.Query["nuevo"] == "true" && Model.Personas.Any() ? "true" : "false")) {
