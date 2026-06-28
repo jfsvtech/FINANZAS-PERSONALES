@@ -29,111 +29,59 @@ public class EmailService
         _logger = logger;
     }
 
-    public bool Configurado => ObtenerApiConfiguracion().Configurado || ObtenerConfiguracion().Configurado;
+    public bool Configurado => ObtenerConfiguracion().Configurado || ObtenerApiConfiguracion().Configurado;
 
     public EmailApiSettings ObtenerApiConfiguracion()
     {
-        var dbSettings = ObtenerApiDesdeBaseDatos();
-        if (dbSettings.Configurado || !string.IsNullOrWhiteSpace(dbSettings.FromEmail))
-            return dbSettings;
-
         return new EmailApiSettings
         {
-            Provider = _config["Notifications:EmailApi:Provider"] ?? "resend",
-            ApiKey = _config["Notifications:EmailApi:ApiKey"] ?? "",
-            FromEmail = _config["Notifications:EmailApi:FromEmail"] ?? "",
-            FromName = _config["Notifications:EmailApi:FromName"] ?? "Finanzas Personales"
+            Provider = LeerConfig("Notifications:EmailApi:Provider", "EMAIL_API_PROVIDER") ?? "resend",
+            ApiKey = LeerConfig("Notifications:EmailApi:ApiKey", "EMAIL_API_KEY") ?? "",
+            FromEmail = LeerConfig("Notifications:EmailApi:FromEmail", "EMAIL_API_FROM_EMAIL") ?? "",
+            FromName = LeerConfig("Notifications:EmailApi:FromName", "EMAIL_API_FROM_NAME") ?? "Finanzas Personales"
         };
     }
 
     public SmtpSettings ObtenerConfiguracion()
     {
-        var dbSettings = ObtenerDesdeBaseDatos();
-        if (dbSettings.Configurado || !string.IsNullOrWhiteSpace(dbSettings.Host) || !string.IsNullOrWhiteSpace(dbSettings.User))
-            return dbSettings;
-
+        var portRaw = LeerConfig("Notifications:Smtp:Port", "SMTP_PORT");
+        var sslRaw = LeerConfig("Notifications:Smtp:EnableSsl", "SMTP_ENABLE_SSL");
         return new SmtpSettings
         {
-            Host = _config["Notifications:Smtp:Host"] ?? "",
-            Port = int.TryParse(_config["Notifications:Smtp:Port"], out var port) ? port : 587,
-            User = _config["Notifications:Smtp:User"] ?? "",
-            Password = _config["Notifications:Smtp:Password"] ?? "",
-            From = _config["Notifications:Smtp:From"] ?? "",
-            EnableSsl = !bool.TryParse(_config["Notifications:Smtp:EnableSsl"], out var ssl) || ssl
+            Host = LeerConfig("Notifications:Smtp:Host", "SMTP_HOST") ?? "",
+            Port = int.TryParse(portRaw, out var port) ? port : 587,
+            User = LeerConfig("Notifications:Smtp:User", "SMTP_USER") ?? "",
+            Password = LeerConfig("Notifications:Smtp:Password", "SMTP_PASSWORD") ?? "",
+            From = LeerConfig("Notifications:Smtp:From", "SMTP_FROM") ?? "",
+            EnableSsl = !bool.TryParse(sslRaw, out var ssl) || ssl
         };
     }
 
     public SmtpDiagnostico ObtenerDiagnostico()
     {
-        try
+        var smtp = ObtenerConfiguracion();
+        var api = ObtenerApiConfiguracion();
+        return new SmtpDiagnostico
         {
-            using var con = _db.Abrir();
-            var filas = con.Query<(string Clave, string? Valor, bool Protegido)>(
-                "SELECT clave, valor, protegido FROM configuraciones_sistema WHERE clave LIKE 'Smtp:%'")
-                .ToDictionary(x => x.Clave, x => x, StringComparer.OrdinalIgnoreCase);
-
-            var diagnostico = new SmtpDiagnostico
-            {
-                TieneConfiguracionBaseDatos = filas.Count > 0,
-                PasswordCifradaEnBaseDatos = filas.TryGetValue("Smtp:Password", out var filaPassword) && !string.IsNullOrWhiteSpace(filaPassword.Valor)
-            };
-
-            if (diagnostico.PasswordCifradaEnBaseDatos)
-            {
-                try
-                {
-                    _ = _protector.Unprotect(filaPassword.Valor!);
-                    diagnostico.PasswordDescifrable = true;
-                    diagnostico.Mensaje = "La contrasena SMTP guardada se puede descifrar correctamente.";
-                }
-                catch
-                {
-                    diagnostico.PasswordDescifrable = false;
-                    diagnostico.Mensaje = "Hay una contrasena SMTP guardada, pero no se puede descifrar con las llaves actuales. En Railway esto suele ocurrir cuando DataProtection no usa un volumen persistente o cambiaste de contenedor/despliegue. Vuelve a guardar la contrasena SMTP en produccion y configura un KeysPath persistente.";
-                }
-            }
-            else if (diagnostico.TieneConfiguracionBaseDatos)
-            {
-                diagnostico.Mensaje = "La configuracion SMTP existe, pero no hay contrasena guardada. Ingresa la contrasena SMTP y guarda.";
-            }
-            else
-            {
-                diagnostico.Mensaje = "No hay configuracion SMTP guardada en base de datos.";
-            }
-
-            return diagnostico;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "No se pudo obtener diagnostico SMTP.");
-            return new SmtpDiagnostico
-            {
-                PasswordDescifrable = false,
-                Mensaje = "No se pudo leer el diagnostico SMTP: " + ex.Message
-            };
-        }
+            TieneConfiguracionBaseDatos = false,
+            PasswordCifradaEnBaseDatos = false,
+            PasswordDescifrable = true,
+            Mensaje = smtp.Configurado
+                ? "Correo SMTP configurado desde variables de entorno. No depende de DataProtection ni de la base de datos."
+                : api.Configurado
+                    ? "Correo API configurado desde variables de entorno. No depende de DataProtection ni de la base de datos."
+                    : "Correo no configurado. Define las variables de entorno SMTP en Railway."
+        };
     }
 
     public void GuardarConfiguracion(SmtpSettings settings, bool actualizarPassword)
     {
-        using var con = _db.Abrir();
-        Guardar(con, "Smtp:Host", settings.Host, false);
-        Guardar(con, "Smtp:Port", settings.Port.ToString(), false);
-        Guardar(con, "Smtp:User", settings.User, false);
-        Guardar(con, "Smtp:From", settings.From, false);
-        Guardar(con, "Smtp:EnableSsl", settings.EnableSsl ? "true" : "false", false);
-        if (actualizarPassword)
-            Guardar(con, "Smtp:Password", _protector.Protect(settings.Password), true);
+        throw new InvalidOperationException("La configuracion de correo se administra por variables de entorno.");
     }
 
     public void GuardarApiConfiguracion(EmailApiSettings settings, bool actualizarApiKey)
     {
-        using var con = _db.Abrir();
-        Guardar(con, "EmailApi:Provider", string.IsNullOrWhiteSpace(settings.Provider) ? "resend" : settings.Provider, false);
-        Guardar(con, "EmailApi:FromEmail", settings.FromEmail, false);
-        Guardar(con, "EmailApi:FromName", string.IsNullOrWhiteSpace(settings.FromName) ? "Finanzas Personales" : settings.FromName, false);
-        if (actualizarApiKey)
-            Guardar(con, "EmailApi:ApiKey", _apiProtector.Protect(settings.ApiKey), true);
+        throw new InvalidOperationException("La configuracion de correo API se administra por variables de entorno.");
     }
 
     public async Task<bool> EnviarPruebaAsync(string destinatario)
@@ -152,11 +100,20 @@ public class EmailService
 
     public async Task<bool> EnviarAsync(string destinatario, string asunto, string html)
     {
+        var settings = ObtenerConfiguracion();
+        if (settings.Configurado)
+            return await EnviarPorSmtpAsync(settings, destinatario, asunto, html);
+
         var api = ObtenerApiConfiguracion();
         if (api.Configurado)
             return await EnviarPorApiAsync(api, destinatario, asunto, html);
 
-        var settings = ObtenerConfiguracion();
+        _logger.LogWarning("Correo no configurado. No se envio el correo '{Subject}' a {Email}.", asunto, destinatario);
+        return false;
+    }
+
+    private async Task<bool> EnviarPorSmtpAsync(SmtpSettings settings, string destinatario, string asunto, string html)
+    {
         if (!settings.Configurado)
         {
             _logger.LogWarning("SMTP no configurado. No se envio el correo '{Subject}' a {Email}.", asunto, destinatario);
@@ -200,6 +157,14 @@ public class EmailService
         }
 
         return true;
+    }
+
+    private string? LeerConfig(string claveDotNet, string claveCorta)
+    {
+        var valor = _config[claveDotNet];
+        if (!string.IsNullOrWhiteSpace(valor)) return valor;
+        valor = _config[claveCorta];
+        return string.IsNullOrWhiteSpace(valor) ? null : valor;
     }
 
     private async Task<bool> EnviarPorApiAsync(EmailApiSettings settings, string destinatario, string asunto, string html)

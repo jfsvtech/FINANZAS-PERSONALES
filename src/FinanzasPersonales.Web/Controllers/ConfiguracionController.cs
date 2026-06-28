@@ -56,40 +56,7 @@ public class ConfiguracionController : BaseController
     public IActionResult GuardarEmailApi(string provider, string? apiKey, string fromEmail, string? fromName)
     {
         if (!EsAdmin) return Forbid();
-        provider = string.IsNullOrWhiteSpace(provider) ? "resend" : provider.Trim().ToLowerInvariant();
-        apiKey = (apiKey ?? "").Trim();
-        fromEmail = (fromEmail ?? "").Trim();
-        fromName = (fromName ?? "").Trim();
-
-        if (provider != "resend")
-        {
-            TempData["Error"] = "Por ahora el proveedor API soportado es Resend.";
-            return RedirectToAction("Integraciones");
-        }
-
-        if (string.IsNullOrWhiteSpace(fromEmail))
-        {
-            TempData["Error"] = "El correo remitente de la API es obligatorio.";
-            return RedirectToAction("Integraciones");
-        }
-
-        var actual = _email.ObtenerApiConfiguracion();
-        var actualizarApiKey = !string.IsNullOrWhiteSpace(apiKey);
-        if (!actualizarApiKey && string.IsNullOrWhiteSpace(actual.ApiKey))
-        {
-            TempData["Error"] = "Debes ingresar la API Key al configurar el correo por API por primera vez.";
-            return RedirectToAction("Integraciones");
-        }
-
-        _email.GuardarApiConfiguracion(new EmailApiSettings
-        {
-            Provider = provider,
-            ApiKey = actualizarApiKey ? apiKey! : actual.ApiKey,
-            FromEmail = fromEmail,
-            FromName = string.IsNullOrWhiteSpace(fromName) ? "Finanzas Personales" : fromName!
-        }, actualizarApiKey);
-
-        TempData["Ok"] = "Configuracion de correo por API guardada correctamente.";
+        TempData["Error"] = "La configuracion de correo se administra con variables de entorno en Railway, no desde la base de datos.";
         return RedirectToAction("Integraciones");
     }
 
@@ -98,37 +65,7 @@ public class ConfiguracionController : BaseController
     public IActionResult GuardarSmtp(string host, int port, string user, string? password, string? from, bool enableSsl = false)
     {
         if (!EsAdmin) return Forbid();
-        host = (host ?? "").Trim();
-        user = (user ?? "").Trim();
-        from = (from ?? "").Trim();
-        password = (password ?? "").Trim();
-        port = port <= 0 ? 587 : port;
-
-        if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(user))
-        {
-            TempData["Error"] = "Servidor SMTP y usuario/correo son obligatorios.";
-            return RedirectToAction("Integraciones");
-        }
-
-        var actual = _email.ObtenerConfiguracion();
-        var actualizarPassword = !string.IsNullOrWhiteSpace(password);
-        if (!actualizarPassword && string.IsNullOrWhiteSpace(actual.Password))
-        {
-            TempData["Error"] = "Debes ingresar la contrasena SMTP al configurar por primera vez.";
-            return RedirectToAction("Integraciones");
-        }
-
-        _email.GuardarConfiguracion(new SmtpSettings
-        {
-            Host = host,
-            Port = port,
-            User = user,
-            Password = actualizarPassword ? password! : actual.Password,
-            From = string.IsNullOrWhiteSpace(from) ? user : from,
-            EnableSsl = enableSsl
-        }, actualizarPassword);
-
-        TempData["Ok"] = "Configuracion SMTP guardada correctamente.";
+        TempData["Error"] = "La configuracion SMTP se administra con variables de entorno en Railway, no desde la base de datos.";
         return RedirectToAction("Integraciones");
     }
 

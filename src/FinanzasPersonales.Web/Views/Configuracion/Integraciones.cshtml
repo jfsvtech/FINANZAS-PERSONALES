@@ -6,7 +6,7 @@
 <div class="page-heading mb-3">
     <span class="page-eyebrow">Administracion</span>
     <h3 class="mb-1"><i class="bi bi-plug text-warning"></i> Integraciones de notificaciones</h3>
-    <p class="text-muted mb-0">Configura desde aqui el correo que enviara verificaciones, recuperacion de contrasena, informes y recordatorios.</p>
+    <p class="text-muted mb-0">El correo se lee desde variables de entorno para evitar problemas de cifrado de secretos en base de datos.</p>
 </div>
 
 <div class="row g-3">
@@ -14,40 +14,24 @@
         <div class="card integration-card">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-3">
-                    <span class="integration-icon"><i class="bi bi-cloud-check"></i></span>
-                    <span class="badge @(Model.EmailApiConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.EmailApiConfigurado ? "Recomendado activo" : "Recomendado para Railway")</span>
+                    <span class="integration-icon"><i class="bi bi-server"></i></span>
+                    <span class="badge @(Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.SmtpConfigurado ? "Variables SMTP activas" : "Variables pendientes")</span>
                 </div>
-                <h5>Correo por API HTTPS</h5>
+                <h5>Correo por variables de entorno</h5>
                 <p class="text-muted small">
-                    Para publicacion en Railway es la opcion mas confiable porque usa HTTPS y evita bloqueos de puertos SMTP como <code>587</code>.
-                    Si configuras esta seccion, el sistema enviara verificaciones, recuperacion de contrasena y recordatorios por API antes que SMTP.
+                    En produccion no se guarda la clave SMTP en la base de datos. Configura estas variables en Railway y reinicia el servicio.
                 </p>
-                <form method="post" asp-action="GuardarEmailApi" class="row g-3">
-                    @Html.AntiForgeryToken()
-                    <div class="col-md-3">
-                        <label class="form-label">Proveedor</label>
-                        <select name="provider" class="form-select">
-                            <option value="resend" selected="@(Model.EmailApiProvider == "resend")">Resend</option>
-                        </select>
-                    </div>
-                    <div class="col-md-5">
-                        <label class="form-label">API Key</label>
-                        <input name="apiKey" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.EmailApiKeyGuardada ? "Guardada. Deja vacio para conservarla" : "re_...")" />
-                        <div class="form-text">La API Key se guarda cifrada con DataProtection.</div>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Nombre remitente</label>
-                        <input name="fromName" class="form-control" value="@Model.EmailApiFromName" placeholder="Finanzas Personales" />
-                    </div>
-                    <div class="col-md-8">
-                        <label class="form-label">Correo remitente verificado</label>
-                        <input name="fromEmail" type="email" class="form-control" value="@Model.EmailApiFromEmail" placeholder="notificaciones@tudominio.com" required />
-                        <div class="form-text">En Resend debe ser un dominio/correo verificado. Para pruebas puedes usar el remitente de sandbox que te entregue el proveedor.</div>
-                    </div>
-                    <div class="col-md-4 d-flex align-items-end">
-                        <button class="btn btn-primary w-100"><i class="bi bi-save"></i> Guardar correo API</button>
-                    </div>
-                </form>
+                <div class="config-code">
+                    <code>Notifications__Smtp__Host=smtp.gmail.com</code>
+                    <code>Notifications__Smtp__Port=587</code>
+                    <code>Notifications__Smtp__User=tu-correo@gmail.com</code>
+                    <code>Notifications__Smtp__Password=contraseña-de-aplicacion</code>
+                    <code>Notifications__Smtp__From=tu-correo@gmail.com</code>
+                    <code>Notifications__Smtp__EnableSsl=true</code>
+                </div>
+                <div class="alert alert-light border small mt-3 mb-0">
+                    Tambien se aceptan nombres cortos: <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM</code>, <code>SMTP_ENABLE_SSL</code>.
+                </div>
             </div>
         </div>
     </div>
@@ -59,8 +43,8 @@
                     <span class="integration-icon"><i class="bi bi-envelope"></i></span>
                     <span class="badge @(Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.SmtpConfigurado ? "Configurado" : "Pendiente")</span>
                 </div>
-                <h5>Correo SMTP del sistema</h5>
-                <p class="text-muted small">Esta cuenta enviara correos automaticos de seguridad y notificaciones. La contrasena se guarda cifrada y no se muestra en pantalla.</p>
+                <h5>Estado SMTP del sistema</h5>
+                <p class="text-muted small">Esta cuenta enviara verificaciones, recuperacion de contrasena, informes y recordatorios. La clave viene desde variables de entorno.</p>
                 <div class="alert alert-info py-2 small">
                     <strong>Gmail recomendado:</strong> servidor <code>smtp.gmail.com</code>, puerto <code>587</code>,
                     SSL/TLS activo y <strong>contrasena de aplicacion</strong>. La contrasena normal de Gmail no funciona para SMTP.
@@ -69,50 +53,34 @@
                 {
                     <div class="alert @(Model.SmtpPasswordDescifrable ? "alert-secondary" : "alert-danger") py-2 small">
                         <strong>Diagnostico SMTP:</strong> @Model.SmtpDiagnostico
-                        @if (!Model.SmtpPasswordDescifrable)
-                        {
-                            <div class="mt-2">
-                                En Railway configura un volumen persistente para las llaves o define <code>DataProtection__KeysPath</code>
-                                apuntando a una ruta persistente, por ejemplo <code>/data/dataprotectionkeys</code>. Luego vuelve a guardar la contrasena SMTP aqui.
-                            </div>
-                        }
                     </div>
                 }
-
-                <form method="post" asp-action="GuardarSmtp" class="row g-3">
-                    @Html.AntiForgeryToken()
+                <div class="row g-3">
                     <div class="col-md-8">
                         <label class="form-label">Servidor SMTP</label>
-                        <input name="host" class="form-control" value="@Model.SmtpHost" placeholder="smtp.gmail.com" required />
+                        <input class="form-control" value="@Model.SmtpHost" placeholder="smtp.gmail.com" readonly />
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Puerto</label>
-                        <input name="port" type="number" class="form-control" value="@Model.SmtpPort" min="1" required />
+                        <input class="form-control" value="@Model.SmtpPort" readonly />
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Usuario / correo SMTP</label>
-                        <input name="user" type="email" class="form-control" value="@Model.SmtpUser" placeholder="correo@dominio.com" required />
+                        <input class="form-control" value="@Model.SmtpUser" placeholder="correo@dominio.com" readonly />
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Remitente visible</label>
-                        <input name="from" type="email" class="form-control" value="@Model.SmtpFrom" placeholder="correo@dominio.com" />
+                        <input class="form-control" value="@Model.SmtpFrom" placeholder="correo@dominio.com" readonly />
                     </div>
-                    <div class="col-md-8">
-                        <label class="form-label">Contrasena SMTP</label>
-                        <input name="password" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.SmtpPasswordGuardada ? "Guardada. Deja vacio para conservarla" : "Contrasena de aplicacion")" />
-                        <div class="form-text">Para Gmail: activa la verificacion en 2 pasos y genera una contrasena de aplicacion en tu cuenta de Google.</div>
+                    <div class="col-md-6">
+                        <label class="form-label">Contraseña SMTP</label>
+                        <input class="form-control" value="@(Model.SmtpPasswordGuardada ? "Configurada por variable" : "Sin configurar")" readonly />
                     </div>
-                    <div class="col-md-4 d-flex align-items-center">
-                        <div class="form-check mt-4">
-                            <input type="checkbox" class="form-check-input" name="enableSsl" id="smtpSsl" value="true" @(Model.SmtpEnableSsl ? "checked" : "") />
-                            <label class="form-check-label" for="smtpSsl">Usar SSL/TLS</label>
-                        </div>
+                    <div class="col-md-6">
+                        <label class="form-label">SSL/TLS</label>
+                        <input class="form-control" value="@(Model.SmtpEnableSsl ? "Activo" : "Inactivo")" readonly />
                     </div>
-                    <div class="col-12 d-flex flex-wrap gap-2">
-                        <button class="btn btn-primary"><i class="bi bi-save"></i> Guardar configuracion</button>
-                        <span class="security-note"><i class="bi bi-shield-check"></i><span>La contrasena se cifra con las llaves internas de la aplicacion.</span></span>
-                    </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>
@@ -125,7 +93,7 @@
                     <span class="badge @(Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning")">Prueba SMTP</span>
                 </div>
                 <h5>Enviar correo de prueba</h5>
-                <p class="text-muted small">Despues de guardar, envia una prueba para confirmar que el servidor acepta la cuenta y la contrasena.</p>
+                <p class="text-muted small">Despues de configurar variables en Railway y reiniciar, envia una prueba para confirmar que el servidor acepta la cuenta y la contrasena.</p>
                 <div class="alert alert-warning py-2 small">
                     Si Gmail responde con error, revisa que no estes usando tu contrasena normal. Debe ser una contrasena de aplicacion de 16 caracteres generada por Google.
                 </div>
@@ -143,7 +111,7 @@
                     <dt>Servidor</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpHost) ? "Sin configurar" : Model.SmtpHost)</dd>
                     <dt>Puerto</dt><dd>@Model.SmtpPort</dd>
                     <dt>Usuario</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpUser) ? "Sin configurar" : Model.SmtpUser)</dd>
-                    <dt>Contrasena</dt><dd>@(Model.SmtpPasswordGuardada ? "Guardada cifrada" : Model.SmtpPasswordCifradaEnBaseDatos ? "Guardada pero no descifrable" : "Sin configurar")</dd>
+                    <dt>Contrasena</dt><dd>@(Model.SmtpPasswordGuardada ? "Variable configurada" : "Sin configurar")</dd>
                     <dt>SSL/TLS</dt><dd>@(Model.SmtpEnableSsl ? "Activo" : "Inactivo")</dd>
                 </dl>
             </div>
