@@ -1,3 +1,5 @@
+using Dapper;
+using FinanzasPersonales.Web.Data;
 using FinanzasPersonales.Web.Models;
 using FinanzasPersonales.Web.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -7,12 +9,14 @@ namespace FinanzasPersonales.Web.Controllers;
 public class ConfiguracionController : BaseController
 {
     private readonly IConfiguration _config;
+    private readonly Db _db;
     private readonly EmailService _email;
     private readonly WhatsAppService _whatsApp;
 
-    public ConfiguracionController(IConfiguration config, EmailService email, WhatsAppService whatsApp)
+    public ConfiguracionController(IConfiguration config, Db db, EmailService email, WhatsAppService whatsApp)
     {
         _config = config;
+        _db = db;
         _email = email;
         _whatsApp = whatsApp;
     }
@@ -25,6 +29,7 @@ public class ConfiguracionController : BaseController
         var gmailApi = _email.ObtenerGmailApiConfiguracion();
         var diagnosticoSmtp = _email.ObtenerDiagnostico();
         var whatsApp = _whatsApp.ObtenerConfiguracion();
+        var recordatorios = ObtenerConfiguracionRecordatoriosEmail();
         return View(new ConfiguracionIntegracionesVm
         {
             EmailProvider = (_config["Notifications:Email:Provider"] ?? _config["EMAIL_PROVIDER"] ?? "smtp").Trim().ToLowerInvariant(),
@@ -52,7 +57,9 @@ public class ConfiguracionController : BaseController
             WhatsAppAdminPhone = whatsApp.AdminPhone,
             WhatsAppTemplateName = whatsApp.TemplateName,
             WhatsAppTemplateLanguage = whatsApp.TemplateLanguage,
-            WhatsAppTokenGuardado = !string.IsNullOrWhiteSpace(whatsApp.AccessToken)
+            WhatsAppTokenGuardado = !string.IsNullOrWhiteSpace(whatsApp.AccessToken),
+            RecordatoriosEmailActivos = recordatorios.Activos,
+            RecordatoriosEmailDiasAntes = recordatorios.DiasAntes
         });
     }
 
@@ -142,6 +149,23 @@ public class ConfiguracionController : BaseController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public IActionResult GuardarRecordatoriosEmail(bool activo = false, int diasAntes = 3)
+    {
+        if (!EsAdmin) return Forbid();
+
+        diasAntes = Math.Clamp(diasAntes, 0, 60);
+        using var con = _db.Abrir();
+        GuardarConfiguracion(con, "RecordatoriosEmail:Activo", activo ? "true" : "false");
+        GuardarConfiguracion(con, "RecordatoriosEmail:DiasAntes", diasAntes.ToString());
+
+        TempData["Ok"] = activo
+            ? $"Recordatorios automaticos activados. Se avisara {diasAntes} dia(s) antes."
+            : "Recordatorios automaticos por correo desactivados.";
+        return RedirectToAction("Integraciones");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> ProbarWhatsApp(string telefonoPrueba, bool usarPlantilla = false)
     {
         if (!EsAdmin) return Forbid();
@@ -157,5 +181,32 @@ public class ConfiguracionController : BaseController
             : await _whatsApp.EnviarPruebaAsync(telefonoPrueba);
         TempData[result.Ok ? "Ok" : "Error"] = result.Message;
         return RedirectToAction("Integraciones");
+    }
+
+    private (bool Activos, int DiasAntes) ObtenerConfiguracionRecordatoriosEmail()
+    {
+        using var con = _db.Abrir();
+        var filas = con.Query<(string Clave, string? Valor)>(
+            @"SELECT clave, valor FROM configuraciones_sistema
+              WHERE clave IN ('RecordatoriosEmail:Activo', 'RecordatoriosEmail:DiasAntes')")
+            .ToDictionary(x => x.Clave, x => x.Valor, StringComparer.OrdinalIgnoreCase);
+
+        var activos = !filas.TryGetValue("RecordatoriosEmail:Activo", out var activoRaw)
+            || bool.TryParse(activoRaw, out var activo) && activo;
+        var diasAntes = filas.TryGetValue("RecordatoriosEmail:DiasAntes", out var diasRaw)
+            && int.TryParse(diasRaw, out var dias)
+            ? Math.Clamp(dias, 0, 60)
+            : 3;
+        return (activos, diasAntes);
+    }
+
+    private static void GuardarConfiguracion(System.Data.IDbConnection con, string clave, string valor)
+    {
+        con.Execute(
+            @"INSERT INTO configuraciones_sistema(clave, valor, protegido, actualizado_en)
+              VALUES(@clave, @valor, FALSE, NOW())
+              ON CONFLICT (clave) DO UPDATE
+              SET valor=EXCLUDED.valor, protegido=FALSE, actualizado_en=NOW()",
+            new { clave, valor });
     }
 }

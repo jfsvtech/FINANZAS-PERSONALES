@@ -37,6 +37,7 @@ builder.Services.AddSingleton<TraduccionService>();
 builder.Services.AddHttpClient<EmailService>();
 builder.Services.AddHttpClient<WhatsAppService>();
 builder.Services.AddHttpClient<PreferenciasUsuarioService>();
+builder.Services.AddHostedService<RecordatoriosEmailHostedService>();
 builder.Services.AddRateLimiter(opt =>
 {
     opt.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -312,6 +313,24 @@ using (var scope = app.Services.CreateScope())
                   protegido BOOLEAN NOT NULL DEFAULT FALSE,
                   actualizado_en TIMESTAMP NOT NULL DEFAULT NOW()
               )");
+        con.Execute(
+            @"CREATE TABLE IF NOT EXISTS recordatorios_email_enviados (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                  tipo VARCHAR(60) NOT NULL,
+                  entidad_id INT NOT NULL,
+                  fecha_evento DATE NOT NULL,
+                  destinatario VARCHAR(180) NOT NULL,
+                  enviado_en TIMESTAMP NOT NULL DEFAULT NOW(),
+                  UNIQUE(usuario_id, tipo, entidad_id, fecha_evento, destinatario)
+              );
+              CREATE INDEX IF NOT EXISTS idx_recordatorios_email_usuario_fecha
+              ON recordatorios_email_enviados (usuario_id, fecha_evento DESC)");
+        con.Execute(
+            @"INSERT INTO configuraciones_sistema(clave, valor, protegido, actualizado_en)
+              VALUES ('RecordatoriosEmail:Activo', 'true', FALSE, NOW()),
+                     ('RecordatoriosEmail:DiasAntes', '3', FALSE, NOW())
+              ON CONFLICT (clave) DO NOTHING");
         con.Execute(
             @"CREATE TABLE IF NOT EXISTS configuraciones_usuario (
                   usuario_id INT PRIMARY KEY REFERENCES usuarios(id),

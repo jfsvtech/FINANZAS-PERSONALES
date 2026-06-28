@@ -637,6 +637,8 @@ public class ConfiguracionIntegracionesVm
     public string WhatsAppTemplateName { get; set; } = "";
     public string WhatsAppTemplateLanguage { get; set; } = "es";
     public bool WhatsAppTokenGuardado { get; set; }
+    public bool RecordatoriosEmailActivos { get; set; } = true;
+    public int RecordatoriosEmailDiasAntes { get; set; } = 3;
 }
 
 public class SmtpDiagnostico
