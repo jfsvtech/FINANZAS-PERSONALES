@@ -14,6 +14,8 @@
     var puedeCalendario = esAdmin || User.HasClaim("PermisoCalendario", "true");
     var idiomaActual = User.FindFirst("Idioma")?.Value ?? "es";
     var monedaActual = User.FindFirst("MonedaCodigo")?.Value ?? "COP";
+    var recordatoriosEmailActivos = (User.FindFirst("RecordatoriosEmailActivos")?.Value ?? "true") == "true";
+    var recordatoriosEmailDias = int.TryParse(User.FindFirst("RecordatoriosEmailDiasAntes")?.Value, out var diasRecordatorio) ? Math.Clamp(diasRecordatorio, 0, 60) : 3;
     var returnUrl = Context.Request.Path + Context.Request.QueryString;
 }
 <!DOCTYPE html>
@@ -159,7 +161,52 @@
     </div>
 
     <div class="modal fade" id="modalCambiarClave" tabindex="-1"><div class="modal-dialog"><form class="modal-content" asp-controller="Acceso" asp-action="CambiarClave" method="post">@Html.AntiForgeryToken()<div class="modal-header"><h5 class="modal-title">Cambiar contrasena</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Contrasena actual</label><input type="password" name="claveActual" class="form-control" autocomplete="current-password" required /></div><div class="mb-3"><label class="form-label">Nueva contrasena</label><input type="password" name="claveNueva" class="form-control" minlength="12" autocomplete="new-password" required /></div><div class="mb-3"><label class="form-label">Confirmar nueva contrasena</label><input type="password" name="confirmarClave" class="form-control" minlength="12" autocomplete="new-password" required /></div><div class="password-policy"><span><i class="bi bi-check2-circle"></i> Minimo 12 caracteres</span><span><i class="bi bi-check2-circle"></i> Mayuscula, minuscula, numero y simbolo</span></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar</button></div></form></div></div>
-    <div class="modal fade" id="modalPreferencias" tabindex="-1"><div class="modal-dialog"><form class="modal-content" asp-controller="Acceso" asp-action="CambiarPreferencias" method="post">@Html.AntiForgeryToken()<input type="hidden" name="returnUrl" value="@returnUrl" /><div class="modal-header"><h5 class="modal-title">Preferencias</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Idioma</label><select name="idioma" class="form-select"><option value="es" selected="@(idiomaActual == "es" ? "selected" : null)">Espanol</option><option value="en" selected="@(idiomaActual == "en" ? "selected" : null)">English</option><option value="pt" selected="@(idiomaActual == "pt" ? "selected" : null)">Portugues</option></select></div><div class="mb-3"><label class="form-label">Moneda base</label><select name="monedaCodigo" class="form-select"><option value="COP" selected="@(monedaActual == "COP" ? "selected" : null)">COP - Peso colombiano</option><option value="USD" selected="@(monedaActual == "USD" ? "selected" : null)">USD - US Dollar</option><option value="EUR" selected="@(monedaActual == "EUR" ? "selected" : null)">EUR - Euro</option><option value="BRL" selected="@(monedaActual == "BRL" ? "selected" : null)">BRL - Real brasileiro</option></select><div class="form-text">La moneda base define como se consolidan los nuevos registros y reportes preparados para multimoneda.</div></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Actualizar preferencias</button></div></form></div></div>
+    <div class="modal fade" id="modalPreferencias" tabindex="-1">
+        <div class="modal-dialog">
+            <form class="modal-content" asp-controller="Acceso" asp-action="CambiarPreferencias" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Preferencias</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Idioma</label>
+                        <select name="idioma" class="form-select">
+                            <option value="es" selected="@(idiomaActual == "es" ? "selected" : null)">Espanol</option>
+                            <option value="en" selected="@(idiomaActual == "en" ? "selected" : null)">English</option>
+                            <option value="pt" selected="@(idiomaActual == "pt" ? "selected" : null)">Portugues</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Moneda base</label>
+                        <select name="monedaCodigo" class="form-select">
+                            <option value="COP" selected="@(monedaActual == "COP" ? "selected" : null)">COP - Peso colombiano</option>
+                            <option value="USD" selected="@(monedaActual == "USD" ? "selected" : null)">USD - US Dollar</option>
+                            <option value="EUR" selected="@(monedaActual == "EUR" ? "selected" : null)">EUR - Euro</option>
+                            <option value="BRL" selected="@(monedaActual == "BRL" ? "selected" : null)">BRL - Real brasileiro</option>
+                        </select>
+                        <div class="form-text">La moneda base define como se consolidan los nuevos registros y reportes preparados para multimoneda.</div>
+                    </div>
+                    <hr />
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" name="recordatoriosEmailActivos" id="prefRecordatoriosEmail" value="true" @(recordatoriosEmailActivos ? "checked" : "") />
+                        <label class="form-check-label fw-bold" for="prefRecordatoriosEmail">Recibir recordatorios por correo</label>
+                        <div class="form-text">Aplica a recurrentes, cobros de prestamos y pagos finales de prestamos.</div>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label">Dias antes para avisarme</label>
+                        <input name="recordatoriosEmailDiasAntes" type="number" min="0" max="60" class="form-control" value="@recordatoriosEmailDias" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button class="btn btn-primary">Actualizar preferencias</button>
+                </div>
+            </form>
+        </div>
+    </div>
 }
 
 <main class="app-content @(!autenticado ? "public-content" : "")">

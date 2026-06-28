@@ -97,6 +97,7 @@ public class AccesoController : Controller
         con.Execute(
             @"UPDATE usuarios SET intentos_fallidos=0, bloqueado_hasta=NULL, ultimo_acceso=NOW()
               WHERE id=@id", new { u.Id });
+        var recordatorios = ObtenerPreferenciasRecordatorios(con, u.Id);
 
         var claims = new List<Claim>
         {
@@ -111,7 +112,9 @@ public class AccesoController : Controller
             new("PermisoAsistente", u.EsAdmin || u.PermisoAsistente ? "true" : "false"),
             new("PermisoCalendario", u.EsAdmin || u.PermisoCalendario ? "true" : "false"),
             new("Idioma", PreferenciasUsuarioService.NormalizarIdioma(u.Idioma)),
-            new("MonedaCodigo", PreferenciasUsuarioService.NormalizarMoneda(u.MonedaCodigo))
+            new("MonedaCodigo", PreferenciasUsuarioService.NormalizarMoneda(u.MonedaCodigo)),
+            new("RecordatoriosEmailActivos", recordatorios.Activos ? "true" : "false"),
+            new("RecordatoriosEmailDiasAntes", recordatorios.DiasAntes.ToString())
         };
         var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(new ClaimsPrincipal(identidad),
@@ -262,24 +265,36 @@ public class AccesoController : Controller
     [Authorize]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CambiarPreferencias(string idioma, string monedaCodigo, string? returnUrl = null)
+    public async Task<IActionResult> CambiarPreferencias(string idioma, string monedaCodigo,
+        bool recordatoriosEmailActivos = false, int recordatoriosEmailDiasAntes = 3, string? returnUrl = null)
     {
         var usuarioId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         idioma = PreferenciasUsuarioService.NormalizarIdioma(idioma);
         monedaCodigo = PreferenciasUsuarioService.NormalizarMoneda(monedaCodigo);
+        recordatoriosEmailDiasAntes = Math.Clamp(recordatoriosEmailDiasAntes, 0, 60);
 
         using var con = _db.Abrir();
         con.Execute(
             @"UPDATE usuarios SET idioma=@idioma, moneda_codigo=@monedaCodigo
               WHERE id=@usuarioId",
             new { usuarioId, idioma, monedaCodigo });
+        con.Execute(
+            @"INSERT INTO configuraciones_usuario
+                (usuario_id, incluir_saldo_anterior, recordatorios_email_activos, recordatorios_email_dias_antes)
+              VALUES (@usuarioId, FALSE, @recordatoriosEmailActivos, @recordatoriosEmailDiasAntes)
+              ON CONFLICT (usuario_id) DO UPDATE
+              SET recordatorios_email_activos=@recordatoriosEmailActivos,
+                  recordatorios_email_dias_antes=@recordatoriosEmailDiasAntes",
+            new { usuarioId, recordatoriosEmailActivos, recordatoriosEmailDiasAntes });
 
         var claims = User.Claims
-            .Where(x => x.Type is not ("Idioma" or "MonedaCodigo"))
+            .Where(x => x.Type is not ("Idioma" or "MonedaCodigo" or "RecordatoriosEmailActivos" or "RecordatoriosEmailDiasAntes"))
             .Select(x => new Claim(x.Type, x.Value))
             .ToList();
         claims.Add(new Claim("Idioma", idioma));
         claims.Add(new Claim("MonedaCodigo", monedaCodigo));
+        claims.Add(new Claim("RecordatoriosEmailActivos", recordatoriosEmailActivos ? "true" : "false"));
+        claims.Add(new Claim("RecordatoriosEmailDiasAntes", recordatoriosEmailDiasAntes.ToString()));
 
         var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(new ClaimsPrincipal(identidad),
@@ -294,6 +309,16 @@ public class AccesoController : Controller
         if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
             return Redirect(returnUrl);
         return RedirectToAction("Index", "Inicio");
+    }
+
+    private static (bool Activos, int DiasAntes) ObtenerPreferenciasRecordatorios(System.Data.IDbConnection con, int usuarioId)
+    {
+        var pref = con.QueryFirstOrDefault<(bool? Activos, int? DiasAntes)>(
+            @"SELECT recordatorios_email_activos AS Activos,
+                     recordatorios_email_dias_antes AS DiasAntes
+              FROM configuraciones_usuario WHERE usuario_id=@usuarioId",
+            new { usuarioId });
+        return (pref.Activos ?? true, Math.Clamp(pref.DiasAntes ?? 3, 0, 60));
     }
 
     [Authorize]

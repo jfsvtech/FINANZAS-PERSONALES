@@ -66,15 +66,14 @@ public class RecordatoriosEmailHostedService : BackgroundService
             return;
         }
 
-        var diasAntes = LeerInt(con.ExecuteScalar<string?>(
+        var diasAntesPorDefecto = LeerInt(con.ExecuteScalar<string?>(
             "SELECT valor FROM configuraciones_sistema WHERE clave=@clave",
             new { clave = ClaveDiasAntes }), 3, 0, 60);
         var hoy = DateTime.Today;
-        var hasta = hoy.AddDays(diasAntes);
 
         var enviados = 0;
-        foreach (var recordatorio in ObtenerRecordatoriosPeriodicos(con, hoy, hasta)
-                     .Concat(ObtenerRecordatoriosPrestamos(con, hoy, hasta)))
+        foreach (var recordatorio in ObtenerRecordatoriosPeriodicos(con, hoy, diasAntesPorDefecto)
+                     .Concat(ObtenerRecordatoriosPrestamos(con, hoy, diasAntesPorDefecto)))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -108,7 +107,7 @@ public class RecordatoriosEmailHostedService : BackgroundService
     }
 
     private static IEnumerable<RecordatorioEmailPendiente> ObtenerRecordatoriosPeriodicos(
-        System.Data.IDbConnection con, DateTime hoy, DateTime hasta)
+        System.Data.IDbConnection con, DateTime hoy, int diasAntesPorDefecto)
     {
         var items = con.Query<RecordatorioPeriodicoDb>(
             @"SELECT gp.id AS Id, gp.usuario_id AS UsuarioId, gp.tipo, gp.nombre,
@@ -117,10 +116,13 @@ public class RecordatoriosEmailHostedService : BackgroundService
                      u.email AS UsuarioEmail, u.nombre_completo AS UsuarioNombre
               FROM gastos_periodicos gp
               JOIN usuarios u ON u.id=gp.usuario_id
+              LEFT JOIN configuraciones_usuario cu ON cu.usuario_id=gp.usuario_id
               WHERE gp.activo=TRUE
                 AND u.activo=TRUE
-                AND gp.proxima_fecha BETWEEN @hoy AND @hasta",
-            new { hoy, hasta });
+                AND COALESCE(cu.recordatorios_email_activos, TRUE)=TRUE
+                AND gp.proxima_fecha BETWEEN @hoy
+                    AND (@hoy + (COALESCE(cu.recordatorios_email_dias_antes, @diasAntesPorDefecto) || ' days')::interval)",
+            new { hoy, diasAntesPorDefecto });
 
         foreach (var item in items)
         {
@@ -139,7 +141,7 @@ public class RecordatoriosEmailHostedService : BackgroundService
     }
 
     private static IEnumerable<RecordatorioEmailPendiente> ObtenerRecordatoriosPrestamos(
-        System.Data.IDbConnection con, DateTime hoy, DateTime hasta)
+        System.Data.IDbConnection con, DateTime hoy, int diasAntesPorDefecto)
     {
         var prestamos = con.Query<RecordatorioPrestamoDb>(
             @"SELECT p.id AS Id, p.usuario_id AS UsuarioId, p.persona_id AS PersonaId,
@@ -148,6 +150,7 @@ public class RecordatoriosEmailHostedService : BackgroundService
                      COALESCE(p.moneda_codigo, u.moneda_codigo, 'COP') AS MonedaCodigo,
                      pe.nombre AS PersonaNombre, pe.email AS PersonaEmail,
                      u.email AS UsuarioEmail, u.nombre_completo AS UsuarioNombre,
+                     COALESCE(cu.recordatorios_email_dias_antes, @diasAntesPorDefecto) AS DiasAntes,
                      GREATEST(0, p.capital - COALESCE((
                          SELECT SUM(pp.monto) FROM prestamo_pagos pp
                          WHERE pp.prestamo_id=p.id AND pp.usuario_id=p.usuario_id AND pp.tipo='abono_capital'
@@ -155,15 +158,19 @@ public class RecordatoriosEmailHostedService : BackgroundService
               FROM prestamos p
               JOIN personas pe ON pe.id=p.persona_id
               JOIN usuarios u ON u.id=p.usuario_id
+              LEFT JOIN configuraciones_usuario cu ON cu.usuario_id=p.usuario_id
               WHERE p.estado='activo'
                 AND u.activo=TRUE
+                AND COALESCE(cu.recordatorios_email_activos, TRUE)=TRUE
                 AND GREATEST(0, p.capital - COALESCE((
                     SELECT SUM(pp.monto) FROM prestamo_pagos pp
                     WHERE pp.prestamo_id=p.id AND pp.usuario_id=p.usuario_id AND pp.tipo='abono_capital'
-                ), 0)) > 0");
+                ), 0)) > 0",
+            new { diasAntesPorDefecto });
 
         foreach (var prestamo in prestamos)
         {
+            var hasta = hoy.AddDays(Math.Clamp(prestamo.DiasAntes, 0, 60));
             if (prestamo.TasaMensual > 0 && prestamo.DiaPagoInteres.HasValue)
             {
                 var fechaInteres = ProximaFechaPorDia(prestamo.DiaPagoInteres.Value, hoy);
@@ -336,5 +343,6 @@ public class RecordatoriosEmailHostedService : BackgroundService
         public string UsuarioEmail { get; set; } = "";
         public string UsuarioNombre { get; set; } = "";
         public decimal SaldoCapital { get; set; }
+        public int DiasAntes { get; set; } = 3;
     }
 }

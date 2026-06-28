@@ -336,6 +336,19 @@ using (var scope = app.Services.CreateScope())
                   usuario_id INT PRIMARY KEY REFERENCES usuarios(id),
                   incluir_saldo_anterior BOOLEAN NOT NULL DEFAULT FALSE
               )");
+        con.Execute("ALTER TABLE configuraciones_usuario ADD COLUMN IF NOT EXISTS recordatorios_email_activos BOOLEAN NOT NULL DEFAULT TRUE");
+        con.Execute("ALTER TABLE configuraciones_usuario ADD COLUMN IF NOT EXISTS recordatorios_email_dias_antes INT NOT NULL DEFAULT 3");
+        con.Execute(
+            @"DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_constraint WHERE conname = 'ck_configuraciones_usuario_recordatorios_dias'
+                ) THEN
+                  ALTER TABLE configuraciones_usuario
+                  ADD CONSTRAINT ck_configuraciones_usuario_recordatorios_dias
+                  CHECK (recordatorios_email_dias_antes BETWEEN 0 AND 60);
+                END IF;
+              END $$");
         con.Execute(
             @"DO $$
               BEGIN
