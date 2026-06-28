@@ -1,58 +1,74 @@
 @model ConfiguracionIntegracionesVm
 @{
     ViewBag.Titulo = "Integraciones de notificaciones";
+    var correoListo = Model.SmtpConfigurado || Model.GmailApiConfigurado || Model.EmailApiConfigurado;
+    var correoEstado = Model.EmailProvider == "gmailapi"
+        ? (Model.GmailApiConfigurado ? "Gmail API activo" : "Gmail API pendiente")
+        : Model.EmailProvider == "resend"
+            ? (Model.EmailApiConfigurado ? "Resend activo" : "Resend pendiente")
+            : (Model.SmtpConfigurado ? "SMTP activo" : "SMTP pendiente");
+    var correoBadge = correoListo ? "text-bg-success" : "text-bg-warning";
 }
 
 <div class="page-heading mb-3">
     <span class="page-eyebrow">Administracion</span>
     <h3 class="mb-1"><i class="bi bi-plug text-warning"></i> Integraciones de notificaciones</h3>
-    <p class="text-muted mb-0">El correo se lee desde variables de entorno para evitar problemas de cifrado de secretos en base de datos.</p>
+    <p class="text-muted mb-0">Gestiona correo, WhatsApp y pruebas desde secciones desplegables para mantener esta pantalla limpia.</p>
 </div>
 
 <div class="row g-3">
     <div class="col-12">
         <div class="card integration-card">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
+                <button class="integration-collapse-head" type="button" data-bs-toggle="collapse" data-bs-target="#correoVariables" aria-expanded="false">
                     <span class="integration-icon"><i class="bi bi-server"></i></span>
-                    <span class="badge @(Model.EmailProvider == "gmailapi" ? (Model.GmailApiConfigurado ? "text-bg-success" : "text-bg-warning") : Model.EmailProvider == "resend" ? (Model.EmailApiConfigurado ? "text-bg-success" : "text-bg-warning") : (Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning"))">
-                        @(Model.EmailProvider == "gmailapi" ? (Model.GmailApiConfigurado ? "Gmail API activo" : "Gmail API pendiente") : Model.EmailProvider == "resend" ? (Model.EmailApiConfigurado ? "Resend activo" : "Resend pendiente") : (Model.SmtpConfigurado ? "SMTP activo" : "SMTP pendiente"))
-                    </span>
-                </div>
-                <h5>Correo por variables de entorno</h5>
-                <p class="text-muted small">
-                    En produccion no se guarda la clave SMTP en la base de datos. Configura estas variables en Railway y reinicia el servicio.
-                </p>
-                <div class="alert alert-light border small">
-                    Proveedor actual: <strong>@(Model.EmailProvider == "gmailapi" ? "Gmail API HTTPS" : Model.EmailProvider == "resend" ? "Resend API HTTPS" : "SMTP")</strong>.
-                    Si quieres usar solo Gmail en Railway, usa <code>EMAIL_PROVIDER=gmailapi</code>.
-                </div>
-                <div class="config-code mb-3">
-                    <code>EMAIL_PROVIDER=gmailapi</code>
-                    <code>GMAIL_CLIENT_ID=cliente-oauth.apps.googleusercontent.com</code>
-                    <code>GMAIL_CLIENT_SECRET=secreto-oauth</code>
-                    <code>GMAIL_REFRESH_TOKEN=refresh-token</code>
-                    <code>GMAIL_FROM_EMAIL=tu-correo@gmail.com</code>
-                    <code>GMAIL_FROM_NAME=Finanzas Personales</code>
-                </div>
-                <div class="config-code">
-                    <code>EMAIL_PROVIDER=smtp</code>
-                    <code>Notifications__Smtp__Host=smtp.gmail.com</code>
-                    <code>Notifications__Smtp__Port=587</code>
-                    <code>Notifications__Smtp__User=tu-correo@gmail.com</code>
-                    <code>Notifications__Smtp__Password=contraseña-de-aplicacion</code>
-                    <code>Notifications__Smtp__From=tu-correo@gmail.com</code>
-                    <code>Notifications__Smtp__EnableSsl=true</code>
-                </div>
-                <div class="alert alert-light border small mt-3 mb-0">
-                    Tambien se aceptan nombres cortos: <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM</code>, <code>SMTP_ENABLE_SSL</code>.
-                </div>
-                <div class="config-code mt-3">
-                    <code>EMAIL_PROVIDER=resend</code>
-                    <code>EMAIL_API_PROVIDER=resend</code>
-                    <code>EMAIL_API_KEY=re_xxxxxxxxx</code>
-                    <code>EMAIL_API_FROM_EMAIL=notificaciones@tudominio.com</code>
-                    <code>EMAIL_API_FROM_NAME=Finanzas Personales</code>
+                    <span class="flex-grow-1"><strong>Correo por variables de entorno</strong><small>Proveedor actual y variables requeridas en Railway.</small></span>
+                    <span class="badge @correoBadge">@correoEstado</span>
+                    <i class="bi bi-chevron-down collapse-chevron"></i>
+                </button>
+                <div id="correoVariables" class="collapse mt-3">
+                    <div class="alert alert-light border small">
+                        Proveedor actual: <strong>@(Model.EmailProvider == "gmailapi" ? "Gmail API HTTPS" : Model.EmailProvider == "resend" ? "Resend API HTTPS" : "SMTP")</strong>.
+                        Para usar solo Gmail en Railway, usa <code>EMAIL_PROVIDER=gmailapi</code>.
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12 col-lg-4">
+                            <h6 class="fw-bold">Gmail API recomendado</h6>
+                            <div class="config-code">
+                                <code>EMAIL_PROVIDER=gmailapi</code>
+                                <code>GMAIL_CLIENT_ID=cliente-oauth.apps.googleusercontent.com</code>
+                                <code>GMAIL_CLIENT_SECRET=secreto-oauth</code>
+                                <code>GMAIL_REFRESH_TOKEN=refresh-token</code>
+                                <code>GMAIL_FROM_EMAIL=tu-correo@gmail.com</code>
+                                <code>GMAIL_FROM_NAME=Finanzas Personales</code>
+                            </div>
+                        </div>
+                        <div class="col-12 col-lg-4">
+                            <h6 class="fw-bold">SMTP alternativo</h6>
+                            <div class="config-code">
+                                <code>EMAIL_PROVIDER=smtp</code>
+                                <code>Notifications__Smtp__Host=smtp.gmail.com</code>
+                                <code>Notifications__Smtp__Port=587</code>
+                                <code>Notifications__Smtp__User=tu-correo@gmail.com</code>
+                                <code>Notifications__Smtp__Password=contrasena-de-aplicacion</code>
+                                <code>Notifications__Smtp__From=tu-correo@gmail.com</code>
+                                <code>Notifications__Smtp__EnableSsl=true</code>
+                            </div>
+                        </div>
+                        <div class="col-12 col-lg-4">
+                            <h6 class="fw-bold">API externa opcional</h6>
+                            <div class="config-code">
+                                <code>EMAIL_PROVIDER=resend</code>
+                                <code>EMAIL_API_PROVIDER=resend</code>
+                                <code>EMAIL_API_KEY=re_xxxxxxxxx</code>
+                                <code>EMAIL_API_FROM_EMAIL=notificaciones@tudominio.com</code>
+                                <code>EMAIL_API_FROM_NAME=Finanzas Personales</code>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-light border small mt-3 mb-0">
+                        La configuracion de correo no se guarda en base de datos. Cambia variables en Railway y haz redeploy.
+                    </div>
                 </div>
             </div>
         </div>
@@ -61,47 +77,28 @@
     <div class="col-12 col-xl-7">
         <div class="card h-100 integration-card">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
+                <button class="integration-collapse-head" type="button" data-bs-toggle="collapse" data-bs-target="#estadoCorreo" aria-expanded="false">
                     <span class="integration-icon"><i class="bi bi-envelope"></i></span>
-                    <span class="badge @(Model.SmtpConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.SmtpConfigurado ? "Configurado" : "Pendiente")</span>
-                </div>
-                <h5>Estado SMTP del sistema</h5>
-                <p class="text-muted small">Esta cuenta enviara verificaciones, recuperacion de contrasena, informes y recordatorios. La clave viene desde variables de entorno.</p>
-                <div class="alert alert-info py-2 small">
-                    <strong>Gmail recomendado:</strong> servidor <code>smtp.gmail.com</code>, puerto <code>587</code>,
-                    SSL/TLS activo y <strong>contrasena de aplicacion</strong>. La contrasena normal de Gmail no funciona para SMTP.
-                </div>
-                @if (!string.IsNullOrWhiteSpace(Model.SmtpDiagnostico))
-                {
-                    <div class="alert @(Model.SmtpPasswordDescifrable ? "alert-secondary" : "alert-danger") py-2 small">
-                        <strong>Diagnostico SMTP:</strong> @Model.SmtpDiagnostico
-                    </div>
-                }
-                <div class="row g-3">
-                    <div class="col-md-8">
-                        <label class="form-label">Servidor SMTP</label>
-                        <input class="form-control" value="@Model.SmtpHost" placeholder="smtp.gmail.com" readonly />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Puerto</label>
-                        <input class="form-control" value="@Model.SmtpPort" readonly />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Usuario / correo SMTP</label>
-                        <input class="form-control" value="@Model.SmtpUser" placeholder="correo@dominio.com" readonly />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Remitente visible</label>
-                        <input class="form-control" value="@Model.SmtpFrom" placeholder="correo@dominio.com" readonly />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Contraseña SMTP</label>
-                        <input class="form-control" value="@(Model.SmtpPasswordGuardada ? "Configurada por variable" : "Sin configurar")" readonly />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">SSL/TLS</label>
-                        <input class="form-control" value="@(Model.SmtpEnableSsl ? "Activo" : "Inactivo")" readonly />
-                    </div>
+                    <span class="flex-grow-1"><strong>Estado del correo</strong><small>Lectura de variables y diagnostico del proveedor activo.</small></span>
+                    <span class="badge @correoBadge">@correoEstado</span>
+                    <i class="bi bi-chevron-down collapse-chevron"></i>
+                </button>
+                <div id="estadoCorreo" class="collapse mt-3">
+                    @if (!string.IsNullOrWhiteSpace(Model.SmtpDiagnostico))
+                    {
+                        <div class="alert @(Model.SmtpPasswordDescifrable ? "alert-secondary" : "alert-danger") py-2 small">
+                            <strong>Diagnostico:</strong> @Model.SmtpDiagnostico
+                        </div>
+                    }
+                    <dl class="integration-status mb-0">
+                        <dt>Proveedor</dt><dd>@(Model.EmailProvider == "gmailapi" ? "Gmail API" : Model.EmailProvider == "resend" ? "Resend" : "SMTP")</dd>
+                        <dt>Gmail API</dt><dd>@(Model.GmailApiConfigurado ? "Activo" : "Pendiente")</dd>
+                        <dt>Gmail remitente</dt><dd>@(string.IsNullOrWhiteSpace(Model.GmailApiFromEmail) ? "Sin configurar" : Model.GmailApiFromEmail)</dd>
+                        <dt>SMTP servidor</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpHost) ? "Sin configurar" : Model.SmtpHost)</dd>
+                        <dt>SMTP usuario</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpUser) ? "Sin configurar" : Model.SmtpUser)</dd>
+                        <dt>SMTP clave</dt><dd>@(Model.SmtpPasswordGuardada ? "Variable configurada" : "Sin configurar")</dd>
+                        <dt>SSL/TLS</dt><dd>@(Model.SmtpEnableSsl ? "Activo" : "Inactivo")</dd>
+                    </dl>
                 </div>
             </div>
         </div>
@@ -110,33 +107,23 @@
     <div class="col-12 col-xl-5">
         <div class="card h-100 integration-card">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
+                <button class="integration-collapse-head" type="button" data-bs-toggle="collapse" data-bs-target="#pruebaCorreo" aria-expanded="false">
                     <span class="integration-icon"><i class="bi bi-send-check"></i></span>
-                    <span class="badge @((Model.SmtpConfigurado || Model.GmailApiConfigurado || Model.EmailApiConfigurado) ? "text-bg-success" : "text-bg-warning")">Prueba correo</span>
+                    <span class="flex-grow-1"><strong>Enviar correo de prueba</strong><small>Valida el envio real del proveedor activo.</small></span>
+                    <span class="badge @correoBadge">Prueba correo</span>
+                    <i class="bi bi-chevron-down collapse-chevron"></i>
+                </button>
+                <div id="pruebaCorreo" class="collapse mt-3">
+                    <p class="text-muted small">Si el correo llega a spam, marca el mensaje como seguro desde Gmail para mejorar entregabilidad.</p>
+                    <form method="post" asp-action="ProbarSmtp">
+                        @Html.AntiForgeryToken()
+                        <div class="mb-3">
+                            <label class="form-label">Correo destino</label>
+                            <input name="emailPrueba" type="email" class="form-control" value="@(Model.GmailApiConfigurado ? Model.GmailApiFromEmail : Model.SmtpUser)" placeholder="tu-correo@dominio.com" required />
+                        </div>
+                        <button class="btn btn-premium w-100" @(correoListo ? "" : "disabled")><i class="bi bi-envelope-check"></i> Enviar prueba</button>
+                    </form>
                 </div>
-                <h5>Enviar correo de prueba</h5>
-                <p class="text-muted small">Despues de configurar variables en Railway y reiniciar, envia una prueba para confirmar que el proveedor de correo funciona.</p>
-                <div class="alert alert-warning py-2 small">
-                    Si Gmail responde con error, revisa que no estes usando tu contrasena normal. Debe ser una contrasena de aplicacion de 16 caracteres generada por Google.
-                    Para Gmail API, verifica que Gmail API este habilitada en el proyecto de Google Cloud.
-                </div>
-                <form method="post" asp-action="ProbarSmtp">
-                    @Html.AntiForgeryToken()
-                    <div class="mb-3">
-                        <label class="form-label">Correo destino</label>
-                        <input name="emailPrueba" type="email" class="form-control" value="@(Model.GmailApiConfigurado ? Model.GmailApiFromEmail : Model.SmtpUser)" placeholder="tu-correo@dominio.com" required />
-                    </div>
-                    <button class="btn btn-premium w-100" @((Model.SmtpConfigurado || Model.GmailApiConfigurado || Model.EmailApiConfigurado) ? "" : "disabled")><i class="bi bi-envelope-check"></i> Enviar prueba</button>
-                </form>
-
-                <hr />
-                <dl class="integration-status mb-0">
-                    <dt>Servidor</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpHost) ? "Sin configurar" : Model.SmtpHost)</dd>
-                    <dt>Puerto</dt><dd>@Model.SmtpPort</dd>
-                    <dt>Usuario</dt><dd>@(string.IsNullOrWhiteSpace(Model.SmtpUser) ? "Sin configurar" : Model.SmtpUser)</dd>
-                    <dt>Contrasena</dt><dd>@(Model.SmtpPasswordGuardada ? "Variable configurada" : "Sin configurar")</dd>
-                    <dt>SSL/TLS</dt><dd>@(Model.SmtpEnableSsl ? "Activo" : "Inactivo")</dd>
-                </dl>
             </div>
         </div>
     </div>
@@ -144,44 +131,24 @@
     <div class="col-12 col-xl-7">
         <div class="card integration-card">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
+                <button class="integration-collapse-head" type="button" data-bs-toggle="collapse" data-bs-target="#whatsappConfig" aria-expanded="false">
                     <span class="integration-icon"><i class="bi bi-whatsapp"></i></span>
+                    <span class="flex-grow-1"><strong>WhatsApp Business Cloud API</strong><small>Token, plantillas y telefono administrador.</small></span>
                     <span class="badge @(Model.WhatsAppConfigurado ? "text-bg-success" : "text-bg-warning")">@(Model.WhatsAppConfigurado ? "Configurado" : "Pendiente")</span>
+                    <i class="bi bi-chevron-down collapse-chevron"></i>
+                </button>
+                <div id="whatsappConfig" class="collapse mt-3">
+                    <form method="post" asp-action="GuardarWhatsApp" class="row g-3">
+                        @Html.AntiForgeryToken()
+                        <div class="col-md-6"><label class="form-label">Phone Number ID</label><input name="phoneNumberId" class="form-control" value="@Model.WhatsAppPhoneNumberId" required /></div>
+                        <div class="col-md-6"><label class="form-label">Version Graph API</label><input name="graphApiVersion" class="form-control" value="@Model.WhatsAppGraphApiVersion" placeholder="v23.0" /></div>
+                        <div class="col-md-7"><label class="form-label">Access Token</label><input name="accessToken" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.WhatsAppTokenGuardado ? "Guardado. Deja vacio para conservarlo" : "Token permanente de Meta")" /></div>
+                        <div class="col-md-5"><label class="form-label">Tu WhatsApp administrador</label><input name="adminPhone" class="form-control" value="@Model.WhatsAppAdminPhone" placeholder="573043567463" /></div>
+                        <div class="col-md-7"><label class="form-label">Plantilla aprobada para recordatorios</label><input name="templateName" class="form-control" value="@Model.WhatsAppTemplateName" placeholder="recordatorio_pago" /><div class="form-text">Para mensajes automaticos fuera de la ventana de 24h debes usar una plantilla aprobada por Meta.</div></div>
+                        <div class="col-md-5"><label class="form-label">Idioma plantilla</label><input name="templateLanguage" class="form-control" value="@Model.WhatsAppTemplateLanguage" placeholder="es" /></div>
+                        <div class="col-12 d-flex flex-wrap gap-2"><button class="btn btn-primary"><i class="bi bi-save"></i> Guardar WhatsApp</button><span class="security-note"><i class="bi bi-shield-check"></i><span>El token se cifra con las llaves internas de la aplicacion.</span></span></div>
+                    </form>
                 </div>
-                <h5>WhatsApp Business Cloud API</h5>
-                <p class="text-muted small mb-3">Configura el numero empresarial que enviara recordatorios a clientes y avisos a tu WhatsApp. El token se guarda cifrado.</p>
-                <form method="post" asp-action="GuardarWhatsApp" class="row g-3">
-                    @Html.AntiForgeryToken()
-                    <div class="col-md-6">
-                        <label class="form-label">Phone Number ID</label>
-                        <input name="phoneNumberId" class="form-control" value="@Model.WhatsAppPhoneNumberId" required />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Version Graph API</label>
-                        <input name="graphApiVersion" class="form-control" value="@Model.WhatsAppGraphApiVersion" placeholder="v23.0" />
-                    </div>
-                    <div class="col-md-7">
-                        <label class="form-label">Access Token</label>
-                        <input name="accessToken" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.WhatsAppTokenGuardado ? "Guardado. Deja vacio para conservarlo" : "Token permanente de Meta")" />
-                    </div>
-                    <div class="col-md-5">
-                        <label class="form-label">Tu WhatsApp administrador</label>
-                        <input name="adminPhone" class="form-control" value="@Model.WhatsAppAdminPhone" placeholder="573043567463" />
-                    </div>
-                    <div class="col-md-7">
-                        <label class="form-label">Plantilla aprobada para recordatorios</label>
-                        <input name="templateName" class="form-control" value="@Model.WhatsAppTemplateName" placeholder="recordatorio_pago" />
-                        <div class="form-text">Para mensajes automaticos fuera de la ventana de 24h debes usar una plantilla aprobada por Meta.</div>
-                    </div>
-                    <div class="col-md-5">
-                        <label class="form-label">Idioma plantilla</label>
-                        <input name="templateLanguage" class="form-control" value="@Model.WhatsAppTemplateLanguage" placeholder="es" />
-                    </div>
-                    <div class="col-12 d-flex flex-wrap gap-2">
-                        <button class="btn btn-primary"><i class="bi bi-save"></i> Guardar WhatsApp</button>
-                        <span class="security-note"><i class="bi bi-shield-check"></i><span>El token se cifra con las llaves internas de la aplicacion.</span></span>
-                    </div>
-                </form>
             </div>
         </div>
     </div>
@@ -189,31 +156,27 @@
     <div class="col-12 col-xl-5">
         <div class="card integration-card h-100">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
+                <button class="integration-collapse-head" type="button" data-bs-toggle="collapse" data-bs-target="#pruebaWhatsApp" aria-expanded="false">
                     <span class="integration-icon"><i class="bi bi-chat-dots"></i></span>
+                    <span class="flex-grow-1"><strong>Enviar WhatsApp de prueba</strong><small>Valida texto directo o plantilla.</small></span>
                     <span class="badge @(Model.WhatsAppConfigurado ? "text-bg-success" : "text-bg-warning")">Prueba WhatsApp</span>
+                    <i class="bi bi-chevron-down collapse-chevron"></i>
+                </button>
+                <div id="pruebaWhatsApp" class="collapse mt-3">
+                    <form method="post" asp-action="ProbarWhatsApp">
+                        @Html.AntiForgeryToken()
+                        <div class="mb-3"><label class="form-label">Telefono destino</label><input name="telefonoPrueba" class="form-control" value="@Model.WhatsAppAdminPhone" placeholder="573043567463" required /></div>
+                        <div class="form-check mb-3"><input type="checkbox" class="form-check-input" name="usarPlantilla" id="usarPlantilla" value="true" /><label class="form-check-label" for="usarPlantilla">Probar usando plantilla configurada</label></div>
+                        <button class="btn btn-premium w-100" @(Model.WhatsAppConfigurado ? "" : "disabled")><i class="bi bi-whatsapp"></i> Enviar prueba</button>
+                    </form>
+                    <hr />
+                    <dl class="integration-status mb-0">
+                        <dt>Phone Number ID</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppPhoneNumberId) ? "Sin configurar" : Model.WhatsAppPhoneNumberId)</dd>
+                        <dt>Token</dt><dd>@(Model.WhatsAppTokenGuardado ? "Guardado cifrado" : "Sin configurar")</dd>
+                        <dt>Admin</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppAdminPhone) ? "Sin configurar" : Model.WhatsAppAdminPhone)</dd>
+                        <dt>Plantilla</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppTemplateName) ? "Sin configurar" : Model.WhatsAppTemplateName)</dd>
+                    </dl>
                 </div>
-                <h5>Enviar WhatsApp de prueba</h5>
-                <p class="text-muted small">Usa un numero en formato internacional. Para Colombia: <code>57</code> + celular.</p>
-                <form method="post" asp-action="ProbarWhatsApp">
-                    @Html.AntiForgeryToken()
-                    <div class="mb-3">
-                        <label class="form-label">Telefono destino</label>
-                        <input name="telefonoPrueba" class="form-control" value="@Model.WhatsAppAdminPhone" placeholder="573043567463" required />
-                    </div>
-                    <div class="form-check mb-3">
-                        <input type="checkbox" class="form-check-input" name="usarPlantilla" id="usarPlantilla" value="true" />
-                        <label class="form-check-label" for="usarPlantilla">Probar usando plantilla configurada</label>
-                    </div>
-                    <button class="btn btn-premium w-100" @(Model.WhatsAppConfigurado ? "" : "disabled")><i class="bi bi-whatsapp"></i> Enviar prueba</button>
-                </form>
-                <hr />
-                <dl class="integration-status mb-0">
-                    <dt>Phone Number ID</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppPhoneNumberId) ? "Sin configurar" : Model.WhatsAppPhoneNumberId)</dd>
-                    <dt>Token</dt><dd>@(Model.WhatsAppTokenGuardado ? "Guardado cifrado" : "Sin configurar")</dd>
-                    <dt>Admin</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppAdminPhone) ? "Sin configurar" : Model.WhatsAppAdminPhone)</dd>
-                    <dt>Plantilla</dt><dd>@(string.IsNullOrWhiteSpace(Model.WhatsAppTemplateName) ? "Sin configurar" : Model.WhatsAppTemplateName)</dd>
-                </dl>
             </div>
         </div>
     </div>

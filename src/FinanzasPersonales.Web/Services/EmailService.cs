@@ -174,7 +174,19 @@ public class EmailService
         using var res = await _http.SendAsync(req);
         var body = await res.Content.ReadAsStringAsync();
         if (res.IsSuccessStatusCode)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var id = doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetString() : "";
+                _logger.LogInformation("Correo enviado por Gmail API a {Email}. GmailMessageId={MessageId}", destinatario, id);
+            }
+            catch
+            {
+                _logger.LogInformation("Correo enviado por Gmail API a {Email}. Respuesta={Body}", destinatario, body);
+            }
             return true;
+        }
 
         _logger.LogError("Error Gmail API enviando '{Subject}' a {Email}. Status={Status}. Body={Body}",
             asunto, destinatario, (int)res.StatusCode, body);
@@ -204,18 +216,35 @@ public class EmailService
     private static string CrearMensajeGmailRaw(GmailApiSettings settings, string destinatario, string asunto, string html)
     {
         static string Header(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+        static string TextoPlano(string value)
+        {
+            var sinTags = System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", " ");
+            return System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(sinTags, "\\s+", " ")).Trim();
+        }
         var from = string.IsNullOrWhiteSpace(settings.FromName)
             ? settings.FromEmail
             : $"{settings.FromName} <{settings.FromEmail}>";
+        var boundary = "----=_FinanzasPersonales_" + Guid.NewGuid().ToString("N");
+        var texto = TextoPlano(html);
         var mime = new StringBuilder()
             .Append("From: ").AppendLine(from)
             .Append("To: ").AppendLine(destinatario)
             .Append("Subject: =?UTF-8?B?").Append(Header(asunto)).AppendLine("?=")
+            .Append("Date: ").AppendLine(DateTimeOffset.UtcNow.ToString("r", System.Globalization.CultureInfo.InvariantCulture))
             .AppendLine("MIME-Version: 1.0")
+            .Append("Content-Type: multipart/alternative; boundary=\"").Append(boundary).AppendLine("\"")
+            .AppendLine()
+            .Append("--").AppendLine(boundary)
+            .AppendLine("Content-Type: text/plain; charset=UTF-8")
+            .AppendLine("Content-Transfer-Encoding: 8bit")
+            .AppendLine()
+            .AppendLine(string.IsNullOrWhiteSpace(texto) ? "Finanzas Personales" : texto)
+            .Append("--").AppendLine(boundary)
             .AppendLine("Content-Type: text/html; charset=UTF-8")
             .AppendLine("Content-Transfer-Encoding: 8bit")
             .AppendLine()
             .AppendLine(html)
+            .Append("--").Append(boundary).AppendLine("--")
             .ToString();
 
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(mime))
