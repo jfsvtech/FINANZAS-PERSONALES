@@ -59,7 +59,7 @@
 
             @if (puedeGastos)
             {
-            <div class="sidebar-group @(esGastos || controladorActual is "Metas" or "Cuentas" or "Categorias" || (controladorActual == "Asistente" && ViewContext.RouteData.Values["action"]?.ToString() == "Registro") ? "open" : "")" data-group="gastos">
+            <div class="sidebar-group" data-group="gastos">
                 <button class="sidebar-group-toggle" type="button"><i class="bi bi-wallet2"></i><span>Gestion de Finanzas</span><i class="bi bi-chevron-down group-chevron"></i></button>
                 <div class="sidebar-group-items">
                     <a class="@(controladorActual == "Dashboard" ? "active" : "")" asp-controller="Dashboard" asp-action="Index"><i class="bi bi-bar-chart-line"></i><span>Analisis financiero</span></a>
@@ -77,7 +77,7 @@
 
             @if (puedePrestamos)
             {
-            <div class="sidebar-group @(esPrestamos ? "open" : "")" data-group="prestamos">
+            <div class="sidebar-group" data-group="prestamos">
                 <button class="sidebar-group-toggle" type="button"><i class="bi bi-cash-stack"></i><span>Gestion de Prestamos</span><i class="bi bi-chevron-down group-chevron"></i></button>
                 <div class="sidebar-group-items">
                     <a class="@(controladorActual == "Prestamos" && ViewContext.RouteData.Values["action"]?.ToString() == "Tablero" ? "active" : "")" asp-controller="Prestamos" asp-action="Tablero"><i class="bi bi-graph-up-arrow"></i><span>Analisis de prestamos</span></a>
@@ -89,7 +89,7 @@
 
             @if (puedeInversiones)
             {
-            <div class="sidebar-group @(esInversiones ? "open" : "")" data-group="inversiones">
+            <div class="sidebar-group" data-group="inversiones">
                 <button class="sidebar-group-toggle" type="button"><i class="bi bi-briefcase"></i><span>Gestion de Inversiones</span><i class="bi bi-chevron-down group-chevron"></i></button>
                 <div class="sidebar-group-items">
                     <a class="@(esInversiones && ViewContext.RouteData.Values["action"]?.ToString() == "Tablero" ? "active premium-link" : "premium-link")" asp-controller="Inversiones" asp-action="Tablero"><i class="bi bi-graph-up-arrow"></i><span>Analisis de inversiones</span></a>
@@ -147,7 +147,7 @@
             @if (puedeCalendario) { <a asp-controller="Calendario" asp-action="Index"><i class="bi bi-calendar3"></i> Calendario financiero</a> }
             @if (puedeGastos)
             {
-                <div class="sidebar-group open"><button class="sidebar-group-toggle" type="button"><i class="bi bi-wallet2"></i><span>Gestion de Finanzas</span><i class="bi bi-chevron-down group-chevron"></i></button><div class="sidebar-group-items"><a asp-controller="Dashboard" asp-action="Index"><i class="bi bi-bar-chart-line"></i> Analisis financiero</a>@if (puedeAsistente) { <a asp-controller="Asistente" asp-action="Registro"><i class="bi bi-mic"></i> Registro rapido</a> }<a asp-controller="Movimientos" asp-action="Index"><i class="bi bi-arrow-left-right"></i> Movimientos</a><a asp-controller="Metas" asp-action="Index"><i class="bi bi-flag"></i> Metas de ahorro</a><a asp-controller="Periodicos" asp-action="Index"><i class="bi bi-arrow-repeat"></i> Recurrentes</a><a asp-controller="Presupuestos" asp-action="Index"><i class="bi bi-bullseye"></i> Presupuestos</a><a asp-controller="Cuentas" asp-action="Index"><i class="bi bi-bank"></i> Cuentas</a><a asp-controller="Categorias" asp-action="Index"><i class="bi bi-tags"></i> Categorias</a></div></div>
+                <div class="sidebar-group"><button class="sidebar-group-toggle" type="button"><i class="bi bi-wallet2"></i><span>Gestion de Finanzas</span><i class="bi bi-chevron-down group-chevron"></i></button><div class="sidebar-group-items"><a asp-controller="Dashboard" asp-action="Index"><i class="bi bi-bar-chart-line"></i> Analisis financiero</a>@if (puedeAsistente) { <a asp-controller="Asistente" asp-action="Registro"><i class="bi bi-mic"></i> Registro rapido</a> }<a asp-controller="Movimientos" asp-action="Index"><i class="bi bi-arrow-left-right"></i> Movimientos</a><a asp-controller="Metas" asp-action="Index"><i class="bi bi-flag"></i> Metas de ahorro</a><a asp-controller="Periodicos" asp-action="Index"><i class="bi bi-arrow-repeat"></i> Recurrentes</a><a asp-controller="Presupuestos" asp-action="Index"><i class="bi bi-bullseye"></i> Presupuestos</a><a asp-controller="Cuentas" asp-action="Index"><i class="bi bi-bank"></i> Cuentas</a><a asp-controller="Categorias" asp-action="Index"><i class="bi bi-tags"></i> Categorias</a></div></div>
             }
             @if (puedePrestamos)
             {
@@ -231,7 +231,7 @@
 <script>
 const themeKey=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(claveTema));
 const sidebarKey='finanzas-sidebar-collapsed';
-const sidebarGroupsKey='finanzas-sidebar-groups';
+const sidebarGroupsKey='finanzas-sidebar-groups-session';
 function themeColors(){const dark=document.documentElement.dataset.theme==='dark';return{purple:'#7C3AED',purpleSoft:'#A78BFA',gold:'#D4AF37',goldSoft:'#F2C94C',success:'#2FBF71',danger:'#E15B64',text:dark?'#D1D5DB':'#6B7280',grid:dark?'rgba(255,255,255,.08)':'#E5E7EB'};}
 function applyChartTheme(){if(!window.Chart)return;const c=themeColors();Chart.defaults.color=c.text;Chart.defaults.borderColor=c.grid;Chart.helpers.each(Chart.instances,x=>x.update());}
 function setTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem(themeKey,theme);document.querySelectorAll('.theme-toggle i').forEach(i=>i.className=theme==='dark'?'bi bi-sun':'bi bi-moon-stars');document.querySelector('meta[name="theme-color"]').content=theme==='dark'?'#17171C':'#7C3AED';applyChartTheme();}
@@ -239,9 +239,9 @@ document.querySelectorAll('.theme-toggle').forEach(b=>b.addEventListener('click'
 function setSidebarCollapsed(collapsed){document.body.classList.toggle('sidebar-collapsed',collapsed);localStorage.setItem(sidebarKey,collapsed?'true':'false');document.querySelector('.sidebar-collapse-toggle span')?.replaceChildren(document.createTextNode(collapsed?'Expandir menu':'Comprimir menu'));}
 setSidebarCollapsed(localStorage.getItem(sidebarKey)==='true');
 document.querySelector('.sidebar-collapse-toggle')?.addEventListener('click',()=>setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed')));
-const savedGroups=JSON.parse(localStorage.getItem(sidebarGroupsKey)||'{}');
+const savedGroups=JSON.parse(sessionStorage.getItem(sidebarGroupsKey)||'{}');
 document.querySelectorAll('.app-sidebar .sidebar-group[data-group]').forEach(group=>{if(savedGroups[group.dataset.group]!==undefined)group.classList.toggle('open',savedGroups[group.dataset.group]);});
-document.querySelectorAll('.sidebar-group-toggle').forEach(btn=>btn.addEventListener('click',()=>{const group=btn.closest('.sidebar-group');group.classList.toggle('open');if(group.dataset.group){savedGroups[group.dataset.group]=group.classList.contains('open');localStorage.setItem(sidebarGroupsKey,JSON.stringify(savedGroups));}}));
+document.querySelectorAll('.sidebar-group-toggle').forEach(btn=>btn.addEventListener('click',()=>{const group=btn.closest('.sidebar-group');group.classList.toggle('open');if(group.dataset.group){savedGroups[group.dataset.group]=group.classList.contains('open');sessionStorage.setItem(sidebarGroupsKey,JSON.stringify(savedGroups));}}));
 document.querySelectorAll('.app-sidebar .sidebar-nav a,.app-sidebar .sidebar-group-toggle').forEach(x=>x.title=x.innerText.trim());
 const menuItems=[...document.querySelectorAll('.app-sidebar .sidebar-nav a')].map(a=>({text:a.innerText.trim(),href:a.href,icon:a.querySelector('i')?.className||''}));
 const search=document.getElementById('busquedaMenu'),results=document.getElementById('resultadosBusqueda');
