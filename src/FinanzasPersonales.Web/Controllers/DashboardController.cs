@@ -103,10 +103,10 @@ public class DashboardController : BaseController
         vm.DeudaTarjetas = vm.Cuentas.Where(c => c.Tipo == "tarjeta_credito").Sum(c => c.Saldo);
 
         vm.GastosPorCategoria = con.Query<GastoCategoriaVm>(
-            @"SELECT cat.nombre, cat.color, cat.icono, SUM(m.monto) AS Total
+            @"SELECT cat.id AS CategoriaId, cat.nombre, cat.color, cat.icono, SUM(m.monto) AS Total
               FROM movimientos m JOIN categorias cat ON cat.id = m.categoria_id
               WHERE m.usuario_id=@usuarioId AND m.tipo='gasto' AND m.fecha>=@desde AND m.fecha<@hasta
-              GROUP BY cat.nombre, cat.color, cat.icono
+              GROUP BY cat.id, cat.nombre, cat.color, cat.icono
               ORDER BY Total DESC", p).ToList();
         vm.ComparacionCategorias = con.Query<ComparacionCategoriaVm>(
             @"SELECT cat.nombre, cat.color, cat.icono,

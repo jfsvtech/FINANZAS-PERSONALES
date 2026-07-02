@@ -83,11 +83,14 @@
 @if (Model.Alertas.Any())
 {
     <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-            <strong><i class="bi bi-bell text-warning"></i> Centro de alertas</strong>
-            <span class="badge text-bg-warning">@Model.Alertas.Count</span>
+        <div class="card-header bg-white p-0">
+            <button class="collapse-section-head" type="button" data-bs-toggle="collapse" data-bs-target="#centroAlertas" aria-expanded="false">
+                <strong><i class="bi bi-bell text-warning"></i> Centro de alertas</strong>
+                <span class="badge text-bg-warning">@Model.Alertas.Count</span>
+                <i class="bi bi-chevron-down"></i>
+            </button>
         </div>
-        <div class="list-group list-group-flush">
+        <div id="centroAlertas" class="collapse list-group list-group-flush">
             @foreach (var alerta in Model.Alertas)
             {
                 <a asp-controller="@alerta.Controller" asp-action="@alerta.Action" class="list-group-item list-group-item-action alert-row">
@@ -131,13 +134,21 @@
 
 @if (Model.PeriodicosPendientes.Any())
 {
-    <div class="alert alert-warning shadow-sm">
-        <strong><i class="bi bi-bell"></i> Recurrentes pendientes del mes:</strong>
-        @foreach (var g in Model.PeriodicosPendientes)
-        {
-            <span class="badge @(g.Tipo == "ingreso" ? "text-bg-success" : "text-bg-warning") me-1"><i class="bi @g.CategoriaIcono me-1"></i>@g.Nombre (@g.MontoEstimado.ToString("C0") - @g.ProximaFecha.ToString("dd MMM"))</span>
-        }
-        <a asp-controller="Periodicos" asp-action="Index" class="alert-link ms-1">Registrarlos aqui</a>
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white p-0">
+            <button class="collapse-section-head" type="button" data-bs-toggle="collapse" data-bs-target="#recurrentesPendientes" aria-expanded="false">
+                <strong><i class="bi bi-arrow-repeat text-warning"></i> Recurrentes pendientes del mes</strong>
+                <span class="badge text-bg-warning">@Model.PeriodicosPendientes.Count</span>
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div id="recurrentesPendientes" class="collapse card-body">
+            @foreach (var g in Model.PeriodicosPendientes)
+            {
+                <span class="badge @(g.Tipo == "ingreso" ? "text-bg-success" : "text-bg-warning") me-1 mb-1"><i class="bi @g.CategoriaIcono me-1"></i>@g.Nombre (@g.MontoEstimado.ToString("C0") - @g.ProximaFecha.ToString("dd MMM"))</span>
+            }
+            <a asp-controller="Periodicos" asp-action="Index" class="alert-link ms-1">Registrarlos aqui</a>
+        </div>
     </div>
 }
 
@@ -149,7 +160,10 @@
                 @if (Model.GastosPorCategoria.Any())
                 {
                     <canvas id="graficaCategorias" style="max-height:300px;"></canvas>
-                    <div class="chart-category-legend mt-3">
+                    <button class="btn btn-outline-primary btn-sm w-100 mt-3" type="button" data-bs-toggle="collapse" data-bs-target="#detalleCategorias" aria-expanded="false">
+                        <i class="bi bi-list-ul"></i> Mostrar detalle por categoria
+                    </button>
+                    <div id="detalleCategorias" class="collapse chart-category-legend mt-3">
                         @{
                             var totalCategorias = Model.GastosPorCategoria.Sum(x => x.Total);
                         }
@@ -158,7 +172,7 @@
                             var porcentaje = totalCategorias > 0 ? Math.Round(c.Total * 100 / totalCategorias, 0) : 0;
                             <div class="chart-category-item">
                                 <span class="entity-icon" style="color:@c.Color;background:color-mix(in srgb,@c.Color 14%,transparent);"><i class="bi @c.Icono"></i></span>
-                                <span><strong>@c.Nombre</strong><small>@porcentaje% del gasto</small></span>
+                                <a class="text-decoration-none" asp-controller="Movimientos" asp-action="Index" asp-route-desde="@F(desdeMovimientos)" asp-route-hasta="@F(hastaMovimientos)" asp-route-tipo="gasto" asp-route-categoriaId="@c.CategoriaId"><strong>@c.Nombre</strong><small>@porcentaje% del gasto</small></a>
                                 <strong>@c.Total.ToString("C0")</strong>
                             </div>
                         }
@@ -262,8 +276,22 @@
 @section Scripts {
 <script>
     const tc = themeColors();
+    const movBase = '@Url.Action("Index", "Movimientos")';
+    function irMov(params) {
+        const url = new URL(movBase, window.location.origin);
+        Object.entries(params).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
+        });
+        window.location.href = url.toString();
+    }
+    function rangoMes(anio, mes) {
+        const desde = new Date(anio, mes - 1, 1);
+        const hasta = new Date(anio, mes, 0);
+        const f = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return { desde: f(desde), hasta: f(hasta) };
+    }
     const categorias = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
-        Model.GastosPorCategoria.Select(x => new { nombre = x.Nombre, color = x.Color, icono = x.Icono, total = x.Total })));
+        Model.GastosPorCategoria.Select(x => new { id = x.CategoriaId, nombre = x.Nombre, color = x.Color, icono = x.Icono, total = x.Total })));
     if (categorias.length > 0) {
         new Chart(document.getElementById('graficaCategorias'), {
             type: 'doughnut',
@@ -272,6 +300,11 @@
                 datasets: [{ data: categorias.map(c => c.total), backgroundColor: categorias.map(c => c.color) }]
             },
             options: {
+                onClick: (evt, elements) => {
+                    if (!elements.length) return;
+                    const categoria = categorias[elements[0].index];
+                    irMov({ desde: '@F(desdeMovimientos)', hasta: '@F(hastaMovimientos)', tipo: 'gasto', categoriaId: categoria.id });
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: { callbacks: { label: ctx => ' $ ' + ctx.parsed.toLocaleString('es-CO') } }
@@ -281,7 +314,7 @@
     }
 
     const serie = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
-        Model.SerieMensual.Select(x => new { etiqueta = x.Etiqueta, ingresos = x.Ingresos, gastos = x.Gastos })));
+        Model.SerieMensual.Select(x => new { anio = x.Anio, mes = x.Mes, etiqueta = x.Etiqueta, ingresos = x.Ingresos, gastos = x.Gastos })));
     new Chart(document.getElementById('graficaEvolucion'), {
         type: 'bar',
         data: {
@@ -292,6 +325,13 @@
             ]
         },
         options: {
+            onClick: (evt, elements) => {
+                if (!elements.length) return;
+                const el = elements[0];
+                const periodo = rangoMes(serie[el.index].anio, serie[el.index].mes);
+                if (el.datasetIndex === 0) irMov({ ...periodo, tipo: 'ingreso' });
+                else irMov({ ...periodo, salidasCaja: 'true' });
+            },
             plugins: {
                 legend: { position: 'bottom' },
                 tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': $ ' + ctx.parsed.y.toLocaleString('es-CO') } }
@@ -303,11 +343,11 @@
     const flujo = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.FlujoDiario.Select(x => new { dia=x.Dia, balance=x.Balance })));
     new Chart(document.getElementById('graficaFlujo'), {
         type:'line', data:{labels:flujo.map(x=>'Dia '+x.dia),datasets:[{label:'Flujo acumulado',data:flujo.map(x=>x.balance),borderColor:tc.purple,backgroundColor:'rgba(124,58,237,.15)',fill:true,tension:.3}]},
-        options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}
+        options:{onClick:(evt,elements)=>{if(!elements.length)return;const dia=flujo[elements[0].index].dia;const fecha=`@Model.Anio-${String(@Model.Mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;irMov({desde:fecha,hasta:fecha,flujoCaja:'true'});},plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}
     });
     new Chart(document.getElementById('graficaClases'), {
         type:'doughnut',data:{labels:['Fijos','Variables y periodicos'],datasets:[{data:[@Model.GastosFijos,@Model.GastosVariables],backgroundColor:[tc.purple,tc.gold]}]},
-        options:{plugins:{legend:{position:'bottom'}}}
+        options:{onClick:(evt,elements)=>{if(!elements.length)return;irMov({desde:'@F(desdeMovimientos)',hasta:'@F(hastaMovimientos)',tipo:'gasto',categoriaClase:elements[0].index===0?'fijo':'variable'});},plugins:{legend:{position:'bottom'}}}
     });
 </script>
 }

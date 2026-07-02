@@ -285,6 +285,7 @@ public class DashboardVm
 
 public class GastoCategoriaVm
 {
+    public int CategoriaId { get; set; }
     public string Nombre { get; set; } = "";
     public string Color { get; set; } = "#6c757d";
     public string Icono { get; set; } = "bi-tag";
@@ -313,7 +314,9 @@ public class MovimientosIndexVm
     public int? FiltroCuentaId { get; set; }
     public int? FiltroCategoriaId { get; set; }
     public bool FiltroFlujoCaja { get; set; }
+    public bool FiltroSalidasCaja { get; set; }
     public string? FiltroCuentaTipo { get; set; }
+    public string? FiltroCategoriaClase { get; set; }
     public decimal TotalIngresos { get; set; }
     public decimal TotalGastos { get; set; }
     public decimal TotalPagosTarjeta { get; set; }
