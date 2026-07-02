@@ -1,28 +1,147 @@
 @model RegistroNaturalVm
 @{
-    ViewBag.Titulo = "Registro mediante voz o texto";
+    ViewBag.Titulo = "Registro rapido";
+    var tabDocumento = Model.Modo == "documento";
+    var confianzaClase = Model.Confianza >= .80m ? "success" : Model.Confianza >= .55m ? "warning" : "danger";
+    var confianzaTexto = Model.Confianza >= .80m ? "Alta" : Model.Confianza >= .55m ? "Media" : "Baja";
 }
-<div class="page-heading mb-3"><span class="page-eyebrow">Registro rapido</span><h3 class="mb-1"><i class="bi bi-mic text-primary"></i> Habla o escribe el movimiento</h3><p class="text-muted mb-0">Ejemplo: "Gaste 45.000 en Mercado con Efectivo ayer". Siempre podras revisar antes de guardar.</p></div>
+
+<div class="page-heading mb-3">
+    <span class="page-eyebrow">Registro rapido</span>
+    <h3 class="mb-1"><i class="bi bi-stars text-primary"></i> Registra movimientos con texto, voz o documento</h3>
+    <p class="text-muted mb-0">La app interpreta la informacion y siempre te deja revisar antes de guardar.</p>
+</div>
+
+<ul class="nav nav-pills gap-2 mb-3 quick-tabs" role="tablist">
+    <li class="nav-item" role="presentation"><button class="nav-link @(tabDocumento ? "" : "active")" data-bs-toggle="pill" data-bs-target="#tabTexto" type="button"><i class="bi bi-mic"></i> Texto / voz</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link @(tabDocumento ? "active" : "")" data-bs-toggle="pill" data-bs-target="#tabDocumento" type="button"><i class="bi bi-camera"></i> Escanear documento</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabManual" type="button"><i class="bi bi-pencil-square"></i> Manual rapido</button></li>
+</ul>
+
 <div class="row g-3">
-    <div class="col-12 col-lg-5"><div class="card"><form method="post" asp-action="Interpretar" class="card-body" id="formNatural">@Html.AntiForgeryToken()
-        <label class="form-label fw-bold">Que ocurrio?</label><textarea name="texto" id="textoNatural" class="form-control natural-input" rows="5" required placeholder="Recibi salario por 4.000.000 en Bancolombia">@Model.Texto</textarea>
-        <div class="voice-controls mt-3"><button type="button" class="btn btn-premium" id="btnVoz"><i class="bi bi-mic"></i><span> Dictar por voz</span></button><span class="voice-status" id="estadoVoz">Pulsa y habla con naturalidad.</span></div>
-        <button class="btn btn-primary w-100 mt-3"><i class="bi bi-stars"></i> Interpretar movimiento</button><p class="form-text mt-2 mb-0">El dictado requiere permiso de microfono y funciona mejor en Chrome o Edge mediante HTTPS. Dependiendo del navegador, el audio puede procesarse mediante su servicio de reconocimiento.</p>
-    </form></div></div>
-    <div class="col-12 col-lg-7">
+    <div class="col-12 col-xl-5">
+        <div class="tab-content">
+            <div class="tab-pane fade @(tabDocumento ? "" : "show active")" id="tabTexto">
+                <div class="card">
+                    <form method="post" asp-action="Interpretar" class="card-body" id="formNatural">
+                        @Html.AntiForgeryToken()
+                        <label class="form-label fw-bold">Que ocurrio?</label>
+                        <textarea name="texto" id="textoNatural" class="form-control natural-input" rows="5" required placeholder="Gaste 45.000 en Mercado con Efectivo ayer">@Model.Texto</textarea>
+                        <div class="voice-controls mt-3">
+                            <button type="button" class="btn btn-premium" id="btnVoz"><i class="bi bi-mic"></i><span> Dictar por voz</span></button>
+                            <span class="voice-status" id="estadoVoz">Pulsa y habla con naturalidad.</span>
+                        </div>
+                        <button class="btn btn-primary w-100 mt-3"><i class="bi bi-stars"></i> Interpretar movimiento</button>
+                        <p class="form-text mt-2 mb-0">El dictado requiere permiso de microfono y funciona mejor en Chrome o Edge mediante HTTPS.</p>
+                    </form>
+                </div>
+            </div>
+
+            <div class="tab-pane fade @(tabDocumento ? "show active" : "")" id="tabDocumento">
+                <div class="card scan-card">
+                    <form method="post" asp-action="InterpretarDocumento" enctype="multipart/form-data" class="card-body" id="formDocumento">
+                        @Html.AntiForgeryToken()
+                        <div class="scan-drop mb-3">
+                            <i class="bi bi-receipt-cutoff"></i>
+                            <h5 class="mb-1">Escanear factura o comprobante</h5>
+                            <p class="text-muted mb-3">Toma una foto desde el celular o sube una imagen. El OCR se ejecuta antes de enviar.</p>
+                            <input class="form-control" type="file" id="archivoDocumento" name="archivoDocumento" accept="image/*,application/pdf" capture="environment" />
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="guardarImagenOriginal" name="guardarImagenOriginal" value="true" />
+                            <label class="form-check-label" for="guardarImagenOriginal">Guardar imagen original como soporte</label>
+                            <div class="form-text">Si lo dejas apagado, solo se guarda el texto extraido para auditoria.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Texto detectado</label>
+                            <textarea class="form-control" id="textoOcr" name="textoOcr" rows="7" placeholder="Aqui aparecera el texto leido del documento. Tambien puedes corregirlo antes de interpretar.">@Model.TextoOcr</textarea>
+                        </div>
+                        <div class="ocr-status mb-3" id="estadoOcr"><i class="bi bi-shield-check"></i> Formatos permitidos: JPG, PNG, WEBP y PDF. OCR automatico inicial para imagenes.</div>
+                        <button class="btn btn-premium w-100" id="btnDocumento"><i class="bi bi-magic"></i> Leer e interpretar documento</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="tabManual">
+                <form method="post" asp-action="GuardarNatural" class="card">
+                    @Html.AntiForgeryToken()
+                    <div class="card-body">
+                        <div class="row g-2 mb-3">
+                            <div class="col-6"><label class="form-label">Tipo</label><select name="tipo" class="form-select tipo-select"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></div>
+                            <div class="col-6"><label class="form-label">Fecha</label><input type="date" name="fecha" class="form-control" value="@DateTime.Today.ToString("yyyy-MM-dd")" required /></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Monto</label><input type="number" name="monto" class="form-control" min="1" step=".01" inputmode="decimal" required /></div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6"><label class="form-label">Cuenta</label><select name="cuentaId" class="form-select" required>@foreach (var c in Model.Cuentas){<option value="@c.Id">@c.Nombre</option>}</select></div>
+                            <div class="col-6"><label class="form-label">Categoria</label><select name="categoriaId" class="form-select categoria-select" required>@foreach (var c in Model.Categorias.Where(x => x.Tipo == "gasto")){<option value="@c.Id" data-tipo="@c.Tipo">@c.Nombre</option>}</select></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Descripcion</label><input name="descripcion" class="form-control" maxlength="200" /></div>
+                        <button class="btn btn-primary w-100"><i class="bi bi-check-lg"></i> Guardar movimiento</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
         @if (Model.Interpretado)
         {
-            <form method="post" asp-action="GuardarNatural" class="card"><div class="card-header fw-bold"><i class="bi bi-check2-circle"></i> Confirma la interpretacion</div><div class="card-body">@Html.AntiForgeryToken()
-                <div class="row g-2 mb-3"><div class="col-6"><label class="form-label">Tipo</label><select name="tipo" class="form-select"><option value="gasto" selected="@(Model.Tipo=="gasto")">Gasto</option><option value="ingreso" selected="@(Model.Tipo=="ingreso")">Ingreso</option></select></div><div class="col-6"><label class="form-label">Fecha</label><input type="date" name="fecha" class="form-control" value="@Model.Fecha.ToString("yyyy-MM-dd")" required /></div></div>
-                <div class="mb-3"><label class="form-label">Monto</label><input type="number" name="monto" class="form-control" value="@Model.Monto" min="1" step=".01" required /></div>
-                <div class="row g-2 mb-3"><div class="col-6"><label class="form-label">Cuenta</label><select name="cuentaId" class="form-select" required>@foreach(var c in Model.Cuentas){<option value="@c.Id" selected="@(c.Id==Model.CuentaId)">@c.Nombre</option>}</select></div><div class="col-6"><label class="form-label">Categoria</label><select name="categoriaId" class="form-select" required>@foreach(var c in Model.Categorias.Where(x=>x.Tipo==Model.Tipo)){<option value="@c.Id" selected="@(c.Id==Model.CategoriaId)">@c.Nombre</option>}</select></div></div>
-                <div class="mb-3"><label class="form-label">Descripcion</label><input name="descripcion" class="form-control" value="@Model.Descripcion" maxlength="200" /></div><button class="btn btn-premium w-100"><i class="bi bi-check-lg"></i> Confirmar y guardar</button>
-            </div></form>
+            <form method="post" asp-action="GuardarNatural" class="card confirm-card">
+                <div class="card-header d-flex justify-content-between align-items-center gap-2">
+                    <span class="fw-bold"><i class="bi bi-check2-circle"></i> Confirma la interpretacion</span>
+                    @if (tabDocumento)
+                    {
+                        <span class="badge text-bg-@confianzaClase">Confianza @confianzaTexto @((Model.Confianza * 100).ToString("0"))%</span>
+                    }
+                </div>
+                <div class="card-body">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="documentoOcrId" value="@Model.DocumentoOcrId" />
+                    @if (!string.IsNullOrWhiteSpace(Model.MensajeDocumento))
+                    {
+                        <div class="alert alert-info py-2"><i class="bi bi-info-circle"></i> @Model.MensajeDocumento</div>
+                    }
+                    @foreach (var alerta in Model.AlertasDocumento)
+                    {
+                        <div class="alert alert-warning py-2">@alerta</div>
+                    }
+                    <div class="row g-2 mb-3">
+                        <div class="col-6"><label class="form-label">Tipo</label><select name="tipo" class="form-select tipo-select"><option value="gasto" selected="@(Model.Tipo=="gasto")">Gasto</option><option value="ingreso" selected="@(Model.Tipo=="ingreso")">Ingreso</option></select></div>
+                        <div class="col-6"><label class="form-label">Fecha</label><input type="date" name="fecha" class="form-control" value="@Model.Fecha.ToString("yyyy-MM-dd")" required /></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label">Monto</label><input type="number" name="monto" class="form-control" value="@Model.Monto" min="1" step=".01" inputmode="decimal" required /></div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6"><label class="form-label">Cuenta</label><select name="cuentaId" class="form-select" required>@foreach (var c in Model.Cuentas){<option value="@c.Id" selected="@(c.Id==Model.CuentaId)">@c.Nombre</option>}</select></div>
+                        <div class="col-6"><label class="form-label">Categoria</label><select name="categoriaId" class="form-select categoria-select" required>@foreach (var c in Model.Categorias.Where(x=>x.Tipo==Model.Tipo)){<option value="@c.Id" data-tipo="@c.Tipo" selected="@(c.Id==Model.CategoriaId)">@c.Nombre</option>}</select></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label">Descripcion</label><input name="descripcion" class="form-control" value="@Model.Descripcion" maxlength="200" /></div>
+                    @if (tabDocumento)
+                    {
+                        <div class="small text-muted mb-3">
+                            OCR: @Model.ProveedorOcr · IA: @Model.ProveedorIa · Archivo: @(Model.NombreArchivo ?? "sin archivo") · Imagen guardada: @(Model.ImagenGuardada ? "si" : "no")
+                        </div>
+                    }
+                    <button class="btn btn-premium w-100"><i class="bi bi-check-lg"></i> Confirmar y registrar</button>
+                </div>
+            </form>
         }
-        else { <div class="empty-state h-100"><i class="bi bi-chat-square-text"></i>Habla o escribe una frase para ver aqui la interpretacion.</div> }
+        else
+        {
+            <div class="empty-state h-100"><i class="bi bi-receipt"></i> Usa texto, voz o documento para ver aqui la propuesta antes de guardar.</div>
+        }
     </div>
 </div>
+
+<style>
+.quick-tabs .nav-link{border:1px solid var(--border);background:var(--surface);font-weight:700}
+.scan-drop{border:1px dashed var(--border);border-radius:20px;padding:1.25rem;text-align:center;background:linear-gradient(135deg,rgba(124,58,237,.08),rgba(212,175,55,.10))}
+.scan-drop i{font-size:2.4rem;color:var(--purple)}
+.ocr-status{border-radius:14px;background:rgba(124,58,237,.08);padding:.75rem .9rem;color:var(--muted);font-size:.92rem}
+.confirm-card .badge{font-size:.82rem}
+</style>
+
 @section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
 const voiceButton=document.getElementById('btnVoz'),voiceText=document.getElementById('textoNatural'),voiceStatus=document.getElementById('estadoVoz');
@@ -35,5 +154,23 @@ else{
  recognition.onend=()=>{listening=false;voiceButton.classList.remove('listening');voiceButton.querySelector('i').className='bi bi-mic';voiceStatus.textContent=voiceText.value?'Texto listo. Revisalo o interpretalo.':'Pulsa y habla con naturalidad.';};
  voiceButton.addEventListener('click',()=>listening?recognition.stop():recognition.start());
 }
+
+const fileInput=document.getElementById('archivoDocumento'),ocrText=document.getElementById('textoOcr'),ocrStatus=document.getElementById('estadoOcr'),docForm=document.getElementById('formDocumento'),docButton=document.getElementById('btnDocumento');
+async function runOcr(file){
+ if(!file)return;
+ if(file.size>8*1024*1024){ocrStatus.textContent='El archivo supera 8 MB.';fileInput.value='';return;}
+ if(file.type==='application/pdf'){ocrStatus.textContent='PDF cargado. Para esta primera version, pega o corrige el texto detectado antes de interpretar.';return;}
+ if(!file.type.startsWith('image/')){ocrStatus.textContent='Formato no permitido.';fileInput.value='';return;}
+ if(!window.Tesseract){ocrStatus.textContent='No pude cargar el OCR del navegador. Puedes escribir el texto manualmente.';return;}
+ docButton.disabled=true;ocrStatus.innerHTML='<span class="spinner-border spinner-border-sm me-2"></span>Leyendo documento...';
+ try{
+  const result=await Tesseract.recognize(file,'spa+eng',{logger:m=>{if(m.status)ocrStatus.textContent=`OCR: ${m.status} ${Math.round((m.progress||0)*100)}%`;}});
+  ocrText.value=(result.data.text||'').trim();
+  ocrStatus.textContent=ocrText.value?'Texto detectado. Revisa y envia para interpretar.':'No se detecto texto. Intenta otra foto con mejor luz.';
+ }catch(e){ocrStatus.textContent='No pude leer la imagen. Intenta otra foto o escribe el texto manualmente.';}
+ finally{docButton.disabled=false;}
+}
+fileInput?.addEventListener('change',e=>runOcr(e.target.files[0]));
+docForm?.addEventListener('submit',e=>{if(!ocrText.value.trim()){e.preventDefault();ocrStatus.textContent='Primero escanea una imagen o escribe el texto detectado.';}});
 </script>
 }

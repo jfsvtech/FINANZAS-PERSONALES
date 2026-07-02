@@ -586,6 +586,7 @@ public class InformeMensualVm
 public class RegistroNaturalVm
 {
     public string Texto { get; set; } = "";
+    public string Modo { get; set; } = "texto";
     public bool Interpretado { get; set; }
     public string Tipo { get; set; } = "gasto";
     public DateTime Fecha { get; set; } = DateTime.Today;
@@ -593,8 +594,36 @@ public class RegistroNaturalVm
     public string Descripcion { get; set; } = "";
     public int? CuentaId { get; set; }
     public int? CategoriaId { get; set; }
+    public string TextoOcr { get; set; } = "";
+    public string? NombreArchivo { get; set; }
+    public string ProveedorOcr { get; set; } = "navegador";
+    public string ProveedorIa { get; set; } = "reglas";
+    public decimal Confianza { get; set; }
+    public int? DocumentoOcrId { get; set; }
+    public bool GuardarImagenOriginal { get; set; }
+    public bool ImagenGuardada { get; set; }
+    public string MensajeDocumento { get; set; } = "";
+    public List<string> AlertasDocumento { get; set; } = new();
     public List<Cuenta> Cuentas { get; set; } = new();
     public List<Categoria> Categorias { get; set; } = new();
+}
+
+public class DocumentoMovimientoOcr
+{
+    public int Id { get; set; }
+    public int UsuarioId { get; set; }
+    public int? MovimientoId { get; set; }
+    public string? NombreArchivo { get; set; }
+    public string? ContentType { get; set; }
+    public long TamanoBytes { get; set; }
+    public string TextoExtraido { get; set; } = "";
+    public string ProveedorOcr { get; set; } = "navegador";
+    public string ProveedorIa { get; set; } = "reglas";
+    public string? RespuestaIaJson { get; set; }
+    public decimal Confianza { get; set; }
+    public bool ImagenGuardada { get; set; }
+    public string? RutaArchivo { get; set; }
+    public DateTime CreadoEn { get; set; }
 }
 
 public class RecordatorioVm

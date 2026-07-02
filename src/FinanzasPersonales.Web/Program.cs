@@ -32,7 +32,7 @@ builder.Services.AddAntiforgery(opt =>
         : CookieSecurePolicy.Always;
 });
 builder.Services.AddSingleton<Db>();
-builder.Services.AddSingleton<AsistenteFinancieroService>();
+builder.Services.AddHttpClient<AsistenteFinancieroService>();
 builder.Services.AddSingleton<TraduccionService>();
 builder.Services.AddHttpClient<EmailService>();
 builder.Services.AddHttpClient<WhatsAppService>();
@@ -115,14 +115,15 @@ app.Use(async (context, next) =>
     headers.TryAdd("X-Content-Type-Options", "nosniff");
     headers.TryAdd("X-Frame-Options", "DENY");
     headers.TryAdd("Referrer-Policy", "strict-origin-when-cross-origin");
-    headers.TryAdd("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)");
+    headers.TryAdd("Permissions-Policy", "camera=(self), geolocation=(), microphone=(self)");
     headers.TryAdd("Content-Security-Policy",
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
         "font-src 'self' https://cdn.jsdelivr.net data:; " +
-        "img-src 'self' data:; " +
-        "connect-src 'self' https://graph.facebook.com; " +
+        "img-src 'self' data: blob:; " +
+        "connect-src 'self' https://graph.facebook.com https://api.openai.com https://cdn.jsdelivr.net; " +
+        "worker-src 'self' blob: https://cdn.jsdelivr.net; " +
         "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     await next();
 });
@@ -326,6 +327,27 @@ using (var scope = app.Services.CreateScope())
               );
               CREATE INDEX IF NOT EXISTS idx_recordatorios_email_usuario_fecha
               ON recordatorios_email_enviados (usuario_id, fecha_evento DESC)");
+        con.Execute(
+            @"CREATE TABLE IF NOT EXISTS documentos_movimiento_ocr (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                  movimiento_id INT NULL REFERENCES movimientos(id) ON DELETE SET NULL,
+                  nombre_archivo VARCHAR(180) NULL,
+                  content_type VARCHAR(120) NULL,
+                  tamano_bytes BIGINT NOT NULL DEFAULT 0,
+                  texto_extraido TEXT NOT NULL,
+                  proveedor_ocr VARCHAR(40) NOT NULL DEFAULT 'navegador',
+                  proveedor_ia VARCHAR(40) NOT NULL DEFAULT 'reglas',
+                  respuesta_ia_json TEXT NULL,
+                  confianza NUMERIC(5,4) NOT NULL DEFAULT 0,
+                  imagen_guardada BOOLEAN NOT NULL DEFAULT FALSE,
+                  ruta_archivo VARCHAR(400) NULL,
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+              );
+              CREATE INDEX IF NOT EXISTS idx_documentos_ocr_usuario_fecha
+              ON documentos_movimiento_ocr (usuario_id, creado_en DESC);
+              CREATE INDEX IF NOT EXISTS idx_documentos_ocr_movimiento
+              ON documentos_movimiento_ocr (movimiento_id) WHERE movimiento_id IS NOT NULL");
         con.Execute(
             @"INSERT INTO configuraciones_sistema(clave, valor, protegido, actualizado_en)
               VALUES ('RecordatoriosEmail:Activo', 'true', FALSE, NOW()),
