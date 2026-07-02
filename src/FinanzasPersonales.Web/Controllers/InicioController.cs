@@ -27,10 +27,34 @@ public class InicioController : BaseController
         vm.GastosMes = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(monto) FROM movimientos
               WHERE usuario_id=@usuarioId AND tipo='gasto' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
+        vm.GastosTarjetaMes = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(m.monto)
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.tipo='gasto' AND c.tipo='tarjeta_credito'
+                AND m.fecha>=@desde AND m.fecha<@hasta", p) ?? 0;
+        vm.PagosTarjetaMes = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(monto) FROM movimientos
+              WHERE usuario_id=@usuarioId AND tipo='pago_tarjeta' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
+        vm.SalidasCajaMes = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(CASE
+                    WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                    WHEN m.tipo='pago_tarjeta' THEN m.monto
+                    ELSE 0 END)
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha>=@desde AND m.fecha<@hasta
+                AND m.tipo IN ('gasto','pago_tarjeta')", p) ?? 0;
         vm.SaldoAnterior = con.ExecuteScalar<decimal?>(
-            @"SELECT SUM(CASE WHEN tipo='ingreso' THEN monto WHEN tipo='gasto' THEN -monto ELSE 0 END)
-              FROM movimientos
-              WHERE usuario_id=@usuarioId AND fecha<@desde AND tipo IN ('ingreso','gasto')", p) ?? 0;
+            @"SELECT SUM(CASE
+                    WHEN m.tipo='ingreso' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                    WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN -m.monto
+                    WHEN m.tipo='pago_tarjeta' THEN -m.monto
+                    ELSE 0 END)
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha<@desde
+                AND m.tipo IN ('ingreso','gasto','pago_tarjeta')", p) ?? 0;
         vm.IncluirSaldoAnterior = con.ExecuteScalar<bool?>(
             "SELECT incluir_saldo_anterior FROM configuraciones_usuario WHERE usuario_id=@usuarioId",
             new { usuarioId = UsuarioId }) ?? false;

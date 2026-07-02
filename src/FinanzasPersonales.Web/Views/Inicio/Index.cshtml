@@ -71,13 +71,24 @@
                         <span class="fw-bold text-success">@Model.IngresosMes.ToString("C0")</span>
                     </li>
                     <li class="list-group-item d-flex justify-content-between px-0">
-                        <span class="text-muted">Gastos del mes</span>
+                        <span class="text-muted">Consumo del mes</span>
                         <span class="fw-bold text-danger">@Model.GastosMes.ToString("C0")</span>
                     </li>
                     <li class="list-group-item d-flex justify-content-between px-0">
-                        <span class="text-muted">Balance del mes</span>
+                        <span class="text-muted">Salidas reales de caja</span>
+                        <span class="fw-bold text-warning">@Model.SalidasCajaMes.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Balance de caja</span>
                         <span class="fw-bold @(Model.BalanceMes >= 0 ? "text-success" : "text-danger")">@Model.BalanceMes.ToString("C0")</span>
                     </li>
+                    @if (Model.GastosTarjetaMes > 0 || Model.PagosTarjetaMes > 0)
+                    {
+                        <li class="list-group-item d-flex justify-content-between px-0 small">
+                            <span class="text-muted">Tarjeta: compras / pagos</span>
+                            <span class="text-muted">@Model.GastosTarjetaMes.ToString("C0") / @Model.PagosTarjetaMes.ToString("C0")</span>
+                        </li>
+                    }
                     <li class="list-group-item d-flex justify-content-between px-0">
                         <span class="text-muted">
                             Disponible

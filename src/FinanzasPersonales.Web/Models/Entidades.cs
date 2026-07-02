@@ -260,8 +260,10 @@ public class DashboardVm
     public int Mes { get; set; }
     public decimal IngresosMes { get; set; }
     public decimal GastosMes { get; set; }
+    public decimal GastosTarjetaMes { get; set; }
     public decimal PagosTarjetaMes { get; set; }
-    public decimal Balance => IngresosMes - GastosMes;
+    public decimal SalidasCajaMes { get; set; }
+    public decimal Balance => IngresosMes - SalidasCajaMes;
     public decimal SaldoAnterior { get; set; }
     public bool IncluirSaldoAnterior { get; set; }
     public decimal DisponibleMes => Balance + (IncluirSaldoAnterior ? SaldoAnterior : 0);
@@ -470,7 +472,10 @@ public class InicioVm
 {
     public decimal IngresosMes { get; set; }
     public decimal GastosMes { get; set; }
-    public decimal BalanceMes => IngresosMes - GastosMes;
+    public decimal GastosTarjetaMes { get; set; }
+    public decimal PagosTarjetaMes { get; set; }
+    public decimal SalidasCajaMes { get; set; }
+    public decimal BalanceMes => IngresosMes - SalidasCajaMes;
     public decimal SaldoAnterior { get; set; }
     public bool IncluirSaldoAnterior { get; set; }
     public decimal DisponibleMes => BalanceMes + (IncluirSaldoAnterior ? SaldoAnterior : 0);

@@ -19,7 +19,15 @@ public class DirectivoController : BaseController
         var vm = new DirectivoVm();
         var p = new { usuarioId = UsuarioId, desde, hasta };
         vm.IngresosMes = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM movimientos WHERE usuario_id=@usuarioId AND tipo='ingreso' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
-        vm.GastosMes = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM movimientos WHERE usuario_id=@usuarioId AND tipo='gasto' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
+        vm.GastosMes = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(CASE
+                    WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                    WHEN m.tipo='pago_tarjeta' THEN m.monto
+                    ELSE 0 END)
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha>=@desde AND m.fecha<@hasta
+                AND m.tipo IN ('gasto','pago_tarjeta')", p) ?? 0;
         vm.Liquidez = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(CASE
                     WHEN m.tipo='ingreso' AND c.tipo<>'tarjeta_credito' THEN m.monto
@@ -54,9 +62,14 @@ public class DirectivoController : BaseController
         vm.InteresPendiente = prestamos.Sum(x => x.InteresPendiente);
         vm.SerieMensual = con.Query<SerieMesVm>(
             @"SELECT EXTRACT(YEAR FROM fecha)::int AS Anio,EXTRACT(MONTH FROM fecha)::int AS Mes,
-              SUM(CASE WHEN tipo='ingreso' THEN monto ELSE 0 END) AS Ingresos,
-              SUM(CASE WHEN tipo='gasto' THEN monto ELSE 0 END) AS Gastos
-              FROM movimientos WHERE usuario_id=@usuarioId AND fecha>=@inicio AND tipo IN ('ingreso','gasto')
+              SUM(CASE WHEN m.tipo='ingreso' THEN m.monto ELSE 0 END) AS Ingresos,
+              SUM(CASE
+                  WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                  WHEN m.tipo='pago_tarjeta' THEN m.monto
+                  ELSE 0 END) AS Gastos
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha>=@inicio AND m.tipo IN ('ingreso','gasto','pago_tarjeta')
               GROUP BY 1,2 ORDER BY 1,2", new { usuarioId = UsuarioId, inicio = desde.AddMonths(-11) }).ToList();
         vm.Composicion = new()
         {

@@ -10,7 +10,7 @@
     <div class="col-6 col-xl-3"><div class="card executive-kpi premium h-100"><div class="card-body"><span>Patrimonio neto estimado</span><strong>@Model.PatrimonioNeto.ToString("C0")</strong><small>Liquidez + cartera + metas - deuda</small></div></div></div>
     <div class="col-6 col-xl-3"><div class="card executive-kpi h-100"><div class="card-body"><span>Liquidez estimada</span><strong class="text-primary">@Model.Liquidez.ToString("C0")</strong><small>Disponible en cuentas</small></div></div></div>
     <div class="col-6 col-xl-3"><div class="card executive-kpi h-100"><div class="card-body"><span>Activos productivos</span><strong>@((Model.SaldoPrestamos+Model.ValorInversiones).ToString("C0"))</strong><small>Inversiones @Model.ValorInversiones.ToString("C0") · cartera @Model.SaldoPrestamos.ToString("C0")</small></div></div></div>
-    <div class="col-6 col-xl-3"><div class="card executive-kpi h-100"><div class="card-body"><span>Resultado del mes</span><strong class="@(Model.ResultadoMes>=0?"text-success":"text-danger")">@Model.ResultadoMes.ToString("C0")</strong><small>Ingresos menos gastos</small></div></div></div>
+    <div class="col-6 col-xl-3"><div class="card executive-kpi h-100"><div class="card-body"><span>Resultado de caja</span><strong class="@(Model.ResultadoMes>=0?"text-success":"text-danger")">@Model.ResultadoMes.ToString("C0")</strong><small>Ingresos menos salidas reales</small></div></div></div>
 </div>
 <div class="row g-3">
     <div class="col-12 col-lg-7"><div class="card h-100"><div class="card-header fw-bold"><i class="bi bi-graph-up"></i> Evolucion financiera</div><div class="card-body"><canvas id="directivoEvolucion"></canvas></div></div></div>
@@ -18,6 +18,6 @@
 </div>
 @section Scripts {<script>
 const dc=themeColors(),ds=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.SerieMensual.Select(x=>new{etiqueta=x.Etiqueta,ingresos=x.Ingresos,gastos=x.Gastos}))),comp=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Composicion.Select(x=>new{nombre=x.Nombre,total=x.Total,color=x.Color})));
-new Chart(document.getElementById('directivoEvolucion'),{type:'line',data:{labels:ds.map(x=>x.etiqueta),datasets:[{label:'Ingresos',data:ds.map(x=>x.ingresos),borderColor:dc.gold,tension:.3},{label:'Gastos',data:ds.map(x=>x.gastos),borderColor:dc.purple,tension:.3}]},options:{plugins:{legend:{position:'bottom'}}}});
+new Chart(document.getElementById('directivoEvolucion'),{type:'line',data:{labels:ds.map(x=>x.etiqueta),datasets:[{label:'Ingresos',data:ds.map(x=>x.ingresos),borderColor:dc.gold,tension:.3},{label:'Salidas de caja',data:ds.map(x=>x.gastos),borderColor:dc.purple,tension:.3}]},options:{plugins:{legend:{position:'bottom'}}}});
 new Chart(document.getElementById('directivoComposicion'),{type:'doughnut',data:{labels:comp.map(x=>x.nombre),datasets:[{data:comp.map(x=>x.total),backgroundColor:comp.map(x=>x.color)}]},options:{plugins:{legend:{position:'bottom'}}}});
 </script>}

@@ -31,23 +31,49 @@ public class DashboardController : BaseController
         vm.GastosMes = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(monto) FROM movimientos
               WHERE usuario_id=@usuarioId AND tipo='gasto' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
+        vm.GastosTarjetaMes = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(m.monto)
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.tipo='gasto' AND c.tipo='tarjeta_credito'
+                AND m.fecha>=@desde AND m.fecha<@hasta", p) ?? 0;
+        vm.PagosTarjetaMes = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(monto) FROM movimientos
+              WHERE usuario_id=@usuarioId AND tipo='pago_tarjeta' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
+        vm.SalidasCajaMes = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(CASE
+                    WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                    WHEN m.tipo='pago_tarjeta' THEN m.monto
+                    ELSE 0 END)
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha>=@desde AND m.fecha<@hasta
+                AND m.tipo IN ('gasto','pago_tarjeta')", p) ?? 0;
         vm.IngresosMesAnterior = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(monto) FROM movimientos
               WHERE usuario_id=@usuarioId AND tipo='ingreso' AND fecha>=@desdeAnterior AND fecha<@desde",
             new { usuarioId = UsuarioId, desdeAnterior, desde }) ?? 0;
         vm.GastosMesAnterior = con.ExecuteScalar<decimal?>(
-            @"SELECT SUM(monto) FROM movimientos
-              WHERE usuario_id=@usuarioId AND tipo='gasto' AND fecha>=@desdeAnterior AND fecha<@desde",
+            @"SELECT SUM(CASE
+                    WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                    WHEN m.tipo='pago_tarjeta' THEN m.monto
+                    ELSE 0 END)
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha>=@desdeAnterior AND m.fecha<@desde
+                AND m.tipo IN ('gasto','pago_tarjeta')",
             new { usuarioId = UsuarioId, desdeAnterior, desde }) ?? 0;
 
-        vm.PagosTarjetaMes = con.ExecuteScalar<decimal?>(
-            @"SELECT SUM(monto) FROM movimientos
-              WHERE usuario_id=@usuarioId AND tipo='pago_tarjeta' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
-
         vm.SaldoAnterior = con.ExecuteScalar<decimal?>(
-            @"SELECT SUM(CASE WHEN tipo='ingreso' THEN monto WHEN tipo='gasto' THEN -monto ELSE 0 END)
-              FROM movimientos
-              WHERE usuario_id=@usuarioId AND fecha<@desde AND tipo IN ('ingreso','gasto')", p) ?? 0;
+            @"SELECT SUM(CASE
+                    WHEN m.tipo='ingreso' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                    WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN -m.monto
+                    WHEN m.tipo='pago_tarjeta' THEN -m.monto
+                    ELSE 0 END)
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha<@desde
+                AND m.tipo IN ('ingreso','gasto','pago_tarjeta')", p) ?? 0;
         vm.IncluirSaldoAnterior = con.ExecuteScalar<bool?>(
             "SELECT incluir_saldo_anterior FROM configuraciones_usuario WHERE usuario_id=@usuarioId",
             new { usuarioId = UsuarioId }) ?? false;
@@ -103,20 +129,31 @@ public class DashboardController : BaseController
               WHERE m.usuario_id=@usuarioId AND m.tipo='gasto' AND c.clase<>'fijo' AND m.fecha>=@desde AND m.fecha<@hasta", p) ?? 0;
         vm.FlujoDiario = con.Query<FlujoDiaVm>(
             @"SELECT EXTRACT(DAY FROM fecha)::int AS Dia,
-                     SUM(SUM(CASE WHEN tipo='ingreso' THEN monto WHEN tipo='gasto' THEN -monto ELSE 0 END))
+                     SUM(SUM(CASE
+                         WHEN m.tipo='ingreso' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                         WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN -m.monto
+                         WHEN m.tipo='pago_tarjeta' THEN -m.monto
+                         ELSE 0 END))
                      OVER (ORDER BY EXTRACT(DAY FROM fecha)) AS Balance
-              FROM movimientos
-              WHERE usuario_id=@usuarioId AND fecha>=@desde AND fecha<@hasta AND tipo IN ('ingreso','gasto')
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha>=@desde AND m.fecha<@hasta
+                AND m.tipo IN ('ingreso','gasto','pago_tarjeta')
               GROUP BY fecha ORDER BY fecha", p).ToList();
 
         // Ultimos 12 meses: ingresos vs gastos
         var inicioSerie = new DateTime(a, m, 1).AddMonths(-11);
         vm.SerieMensual = con.Query<SerieMesVm>(
             @"SELECT EXTRACT(YEAR FROM fecha)::int AS Anio, EXTRACT(MONTH FROM fecha)::int AS Mes,
-                     SUM(CASE WHEN tipo='ingreso' THEN monto ELSE 0 END) AS Ingresos,
-                     SUM(CASE WHEN tipo='gasto'   THEN monto ELSE 0 END) AS Gastos
-              FROM movimientos
-              WHERE usuario_id=@usuarioId AND fecha>=@inicioSerie AND fecha<@hasta AND tipo IN ('ingreso','gasto')
+                     SUM(CASE WHEN m.tipo='ingreso' THEN m.monto ELSE 0 END) AS Ingresos,
+                     SUM(CASE
+                         WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                         WHEN m.tipo='pago_tarjeta' THEN m.monto
+                         ELSE 0 END) AS Gastos
+              FROM movimientos m
+              JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId AND m.fecha>=@inicioSerie AND m.fecha<@hasta
+                AND m.tipo IN ('ingreso','gasto','pago_tarjeta')
               GROUP BY 1,2 ORDER BY 1,2",
             new { usuarioId = UsuarioId, inicioSerie, hasta }).ToList();
 
