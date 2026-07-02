@@ -118,12 +118,12 @@ app.Use(async (context, next) =>
     headers.TryAdd("Permissions-Policy", "camera=(self), geolocation=(), microphone=(self)");
     headers.TryAdd("Content-Security-Policy",
         "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+        "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; " +
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
         "font-src 'self' https://cdn.jsdelivr.net data:; " +
         "img-src 'self' data: blob:; " +
-        "connect-src 'self' https://graph.facebook.com https://api.openai.com https://cdn.jsdelivr.net; " +
-        "worker-src 'self' blob: https://cdn.jsdelivr.net; " +
+        "connect-src 'self' https://graph.facebook.com https://api.openai.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; " +
+        "worker-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; " +
         "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     await next();
 });
