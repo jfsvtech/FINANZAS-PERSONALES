@@ -24,7 +24,8 @@
     </h4>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-success btn-sm" asp-action="ExportarExcel" asp-route-desde="@F(Model.Desde)" asp-route-hasta="@F(Model.Hasta)"
-           asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">
+           asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId"
+           asp-route-flujoCaja="@Model.FiltroFlujoCaja" asp-route-cuentaTipo="@Model.FiltroCuentaTipo">
             <i class="bi bi-file-earmark-excel"></i> Excel
         </a>
         <a class="btn btn-outline-primary btn-sm" asp-controller="Importar" asp-action="Index">
@@ -40,18 +41,41 @@
             <span class="text-muted small me-1 align-self-center"><i class="bi bi-lightning"></i> Rapido:</span>
             <a class="btn btn-sm @(Model.Desde == esteMesD && Model.Hasta == esteMesH ? "btn-primary" : "btn-outline-primary")"
                asp-action="Index" asp-route-desde="@F(esteMesD)" asp-route-hasta="@F(esteMesH)"
-               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">Este mes</a>
+               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId"
+               asp-route-flujoCaja="@Model.FiltroFlujoCaja" asp-route-cuentaTipo="@Model.FiltroCuentaTipo">Este mes</a>
             <a class="btn btn-sm @(Model.Desde == mesPasadoD && Model.Hasta == mesPasadoH ? "btn-primary" : "btn-outline-primary")"
                asp-action="Index" asp-route-desde="@F(mesPasadoD)" asp-route-hasta="@F(mesPasadoH)"
-               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">Mes pasado</a>
+               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId"
+               asp-route-flujoCaja="@Model.FiltroFlujoCaja" asp-route-cuentaTipo="@Model.FiltroCuentaTipo">Mes pasado</a>
             <a class="btn btn-sm @(Model.Desde == tresMesesD && Model.Hasta == esteMesH ? "btn-primary" : "btn-outline-primary")"
                asp-action="Index" asp-route-desde="@F(tresMesesD)" asp-route-hasta="@F(esteMesH)"
-               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">Ultimos 3 meses</a>
+               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId"
+               asp-route-flujoCaja="@Model.FiltroFlujoCaja" asp-route-cuentaTipo="@Model.FiltroCuentaTipo">Ultimos 3 meses</a>
             <a class="btn btn-sm @(Model.Desde == anioD && Model.Hasta == anioH ? "btn-primary" : "btn-outline-primary")"
                asp-action="Index" asp-route-desde="@F(anioD)" asp-route-hasta="@F(anioH)"
-               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">Este a&ntilde;o</a>
+               asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId"
+               asp-route-flujoCaja="@Model.FiltroFlujoCaja" asp-route-cuentaTipo="@Model.FiltroCuentaTipo">Este a&ntilde;o</a>
         </div>
+        @if (Model.FiltroFlujoCaja || !string.IsNullOrWhiteSpace(Model.FiltroCuentaTipo))
+        {
+            <div class="d-flex gap-2 flex-wrap mb-2">
+                @if (Model.FiltroFlujoCaja)
+                {
+                    <span class="badge text-bg-primary"><i class="bi bi-cash-coin"></i> Solo flujo de caja</span>
+                }
+                @if (Model.FiltroCuentaTipo == "tarjeta_credito")
+                {
+                    <span class="badge text-bg-warning"><i class="bi bi-credit-card"></i> Tarjetas de credito</span>
+                }
+                <a class="badge text-bg-light border text-decoration-none" asp-action="Index" asp-route-desde="@F(Model.Desde)" asp-route-hasta="@F(Model.Hasta)"
+                   asp-route-tipo="@Model.FiltroTipo" asp-route-cuentaId="@Model.FiltroCuentaId" asp-route-categoriaId="@Model.FiltroCategoriaId">
+                    Quitar filtro especial
+                </a>
+            </div>
+        }
         <div class="row g-2 align-items-end">
+            <input type="hidden" name="flujoCaja" value="@Model.FiltroFlujoCaja.ToString().ToLowerInvariant()" />
+            <input type="hidden" name="cuentaTipo" value="@Model.FiltroCuentaTipo" />
             <div class="col-6 col-md-2">
                 <label class="form-label small mb-0">Desde</label>
                 <input type="date" name="desde" class="form-control form-control-sm" value="@F(Model.Desde)" />

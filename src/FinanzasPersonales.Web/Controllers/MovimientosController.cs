@@ -17,23 +17,27 @@ public class MovimientosController : BaseController
         _preferencias = preferencias;
     }
 
-    public IActionResult Index(DateTime? desde, DateTime? hasta, string? tipo, int? cuentaId, int? categoriaId, int? anio, int? mes)
+    public IActionResult Index(DateTime? desde, DateTime? hasta, string? tipo, int? cuentaId, int? categoriaId, int? anio, int? mes,
+        bool flujoCaja = false, string? cuentaTipo = null)
     {
         var (d, h) = ResolverRango(desde, hasta, anio, mes);
+        cuentaTipo = NormalizarCuentaTipo(cuentaTipo);
         var vm = new MovimientosIndexVm
         {
             Desde = d,
             Hasta = h,
             FiltroTipo = tipo,
             FiltroCuentaId = cuentaId,
-            FiltroCategoriaId = categoriaId
+            FiltroCategoriaId = categoriaId,
+            FiltroFlujoCaja = flujoCaja,
+            FiltroCuentaTipo = cuentaTipo
         };
 
         using var con = _db.Abrir();
         var pref = _preferencias.Obtener(UsuarioId);
         vm.MonedaBase = pref.MonedaCodigo;
         vm.Monedas = _preferencias.Monedas();
-        vm.Movimientos = Consultar(con, UsuarioId, d, h.AddDays(1), tipo, cuentaId, categoriaId);
+        vm.Movimientos = Consultar(con, UsuarioId, d, h.AddDays(1), tipo, cuentaId, categoriaId, flujoCaja, cuentaTipo);
         vm.Cuentas = CuentasActivas(con);
         vm.Categorias = CategoriasActivas(con);
         vm.TotalIngresos = vm.Movimientos.Where(x => x.Tipo == "ingreso").Sum(x => x.Monto);
@@ -117,12 +121,14 @@ public class MovimientosController : BaseController
         return RedirectToAction("Index", new { desde = desde?.ToString("yyyy-MM-dd"), hasta = hasta?.ToString("yyyy-MM-dd") });
     }
 
-    public IActionResult ExportarExcel(DateTime? desde, DateTime? hasta, string? tipo, int? cuentaId, int? categoriaId)
+    public IActionResult ExportarExcel(DateTime? desde, DateTime? hasta, string? tipo, int? cuentaId, int? categoriaId,
+        bool flujoCaja = false, string? cuentaTipo = null)
     {
         var (d, h) = ResolverRango(desde, hasta, null, null);
+        cuentaTipo = NormalizarCuentaTipo(cuentaTipo);
 
         using var con = _db.Abrir();
-        var datos = Consultar(con, UsuarioId, d, h.AddDays(1), tipo, cuentaId, categoriaId);
+        var datos = Consultar(con, UsuarioId, d, h.AddDays(1), tipo, cuentaId, categoriaId, flujoCaja, cuentaTipo);
 
         using var libro = new XLWorkbook();
         var hoja = libro.Worksheets.Add($"Mov {d:yyyy-MM-dd} a {h:yyyy-MM-dd}");
@@ -191,7 +197,7 @@ public class MovimientosController : BaseController
         });
 
     private static List<Movimiento> Consultar(System.Data.IDbConnection con, int usuarioId,
-        DateTime desde, DateTime hasta, string? tipo, int? cuentaId, int? categoriaId)
+        DateTime desde, DateTime hasta, string? tipo, int? cuentaId, int? categoriaId, bool flujoCaja, string? cuentaTipo)
     {
         var sql = @"SELECT m.id, m.usuario_id AS UsuarioId, m.fecha, m.tipo, m.cuenta_id AS CuentaId,
                            m.cuenta_destino_id AS CuentaDestinoId, m.categoria_id AS CategoriaId,
@@ -211,8 +217,26 @@ public class MovimientosController : BaseController
         if (!string.IsNullOrEmpty(tipo)) sql += " AND m.tipo=@tipo";
         if (cuentaId.HasValue) sql += " AND (m.cuenta_id=@cuentaId OR m.cuenta_destino_id=@cuentaId)";
         if (categoriaId.HasValue) sql += " AND m.categoria_id=@categoriaId";
+        if (flujoCaja)
+        {
+            sql += @" AND (
+                        (m.tipo='ingreso' AND c.tipo<>'tarjeta_credito')
+                        OR (m.tipo='gasto' AND c.tipo<>'tarjeta_credito')
+                        OR m.tipo='pago_tarjeta'
+                    )";
+        }
+        if (cuentaTipo == "tarjeta_credito")
+            sql += " AND (c.tipo='tarjeta_credito' OR cd.tipo='tarjeta_credito')";
+        else if (cuentaTipo == "cuenta_dinero")
+            sql += " AND c.tipo<>'tarjeta_credito'";
         sql += " ORDER BY m.fecha DESC, m.id DESC";
         return con.Query<Movimiento>(sql, new { usuarioId, desde, hasta, tipo, cuentaId, categoriaId }).ToList();
+    }
+
+    private static string? NormalizarCuentaTipo(string? cuentaTipo)
+    {
+        cuentaTipo = (cuentaTipo ?? "").Trim().ToLowerInvariant();
+        return cuentaTipo is "tarjeta_credito" or "cuenta_dinero" ? cuentaTipo : null;
     }
 
     private List<Cuenta> CuentasActivas(System.Data.IDbConnection con) =>

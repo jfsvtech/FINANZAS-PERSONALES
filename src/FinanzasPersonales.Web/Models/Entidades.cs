@@ -312,6 +312,8 @@ public class MovimientosIndexVm
     public string? FiltroTipo { get; set; }
     public int? FiltroCuentaId { get; set; }
     public int? FiltroCategoriaId { get; set; }
+    public bool FiltroFlujoCaja { get; set; }
+    public string? FiltroCuentaTipo { get; set; }
     public decimal TotalIngresos { get; set; }
     public decimal TotalGastos { get; set; }
     public decimal TotalPagosTarjeta { get; set; }
