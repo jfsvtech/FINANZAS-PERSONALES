@@ -1,0 +1,255 @@
+@model DeudaDetalleVm
+@inject PreferenciasUsuarioService Money
+@{
+    var d = Model.Deuda;
+    ViewBag.Titulo = $"Deuda con {d.Acreedor}";
+    string M(decimal valor, string moneda) => Money.FormatoMoneda(valor, moneda);
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h4 class="mb-0"><a asp-action="Index" class="text-decoration-none"><i class="bi bi-arrow-left"></i></a> <i class="bi bi-building-lock"></i> Deuda: @d.Acreedor <span class="badge @(d.Estado=="pagada"?"text-bg-success":d.Estado=="vencida"?"text-bg-warning":"text-bg-primary")">@d.Estado</span></h4>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEditar"><i class="bi bi-pencil"></i> Editar</button>
+        <form method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar esta deuda y todo su historial?');">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@d.Id" /><button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Eliminar</button></form>
+    </div>
+</div>
+
+<div class="text-muted small mb-3">
+    @d.TipoTexto · @d.SistemaPagoTexto · Desembolso @d.FechaDesembolso.ToString("dd MMM yyyy")
+    @if (d.Tasa > 0){<span> · tasa @d.Tasa.ToString("0.####")% @d.PeriodoTasa</span>}
+    @if (d.ProximaFechaPago.HasValue){<span> · proximo pago @d.ProximaFechaPago.Value.ToString("dd MMM yyyy")</span>}
+    @if (!string.IsNullOrWhiteSpace(d.Notas)){<br/><i class="bi bi-sticky"></i> @d.Notas}
+</div>
+
+<div class="row g-2 mb-3 text-center">
+    <div class="col-6 col-md-2"><div class="mini-stat"><span>Capital inicial</span><strong>@M(d.CapitalOriginal, d.MonedaCodigo)</strong>@if(d.MonedaCodigo!=Model.MonedaBase){<small>@M(d.CapitalInicial, Model.MonedaBase)</small>}</div></div>
+    <div class="col-6 col-md-2"><div class="mini-stat mini-stat-success"><span>Capital pagado</span><strong>@M(d.CapitalPagado, Model.MonedaBase)</strong></div></div>
+    <div class="col-6 col-md-2"><div class="mini-stat mini-stat-danger"><span>Saldo capital</span><strong>@M(d.SaldoCapital, Model.MonedaBase)</strong></div></div>
+    <div class="col-6 col-md-2"><div class="mini-stat"><span>Interes pagado</span><strong>@M(d.InteresPagado, Model.MonedaBase)</strong></div></div>
+    <div class="col-6 col-md-2"><div class="mini-stat"><span>Costos</span><strong>@M(d.CostosPagados, Model.MonedaBase)</strong></div></div>
+    <div class="col-6 col-md-2"><div class="mini-stat"><span>Avance</span><strong>@d.Avance%</strong></div></div>
+</div>
+
+<div class="progress mb-3" style="height:12px"><div class="progress-bar" style="width:@Math.Min(100,d.Avance)%"></div></div>
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold"><i class="bi bi-graph-down-arrow"></i> Evolucion de deuda</div>
+            <div class="card-body"><canvas id="graficaDeudaSaldo" style="max-height:220px"></canvas></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold"><i class="bi bi-pie-chart"></i> Composicion pagada</div>
+            <div class="card-body"><canvas id="graficaDeudaComposicion" style="max-height:220px"></canvas></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold"><i class="bi bi-lightning-charge"></i> Simular abono</div>
+            <div class="card-body">
+                <label class="form-label small">Abono extra a capital</label>
+                <input type="number" id="simAbonoDeuda" class="form-control mb-2" min="0" step="1" placeholder="Ej. 500000" />
+                <select id="simEfectoDeuda" class="form-select mb-2">
+                    <option value="reducir_plazo">Mantener cuota y reducir plazo</option>
+                    <option value="reducir_cuota">Mantener plazo y reducir cuota</option>
+                </select>
+                <button type="button" class="btn btn-outline-primary w-100" onclick="simularAbonoDeuda()">Calcular impacto</button>
+                <div id="simResultadoDeuda" class="alert alert-light border small mt-3 mb-0">
+                    Simula cuanto baja tu saldo, cuota o tiempo de pago.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header fw-bold"><i class="bi bi-cash-coin"></i> Registrar pago</div>
+            <form class="card-body" method="post" asp-action="RegistrarPago" id="formPagoDeuda">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="deudaId" value="@d.Id" />
+                <div class="row g-2 mb-3">
+                    <div class="col-6"><label class="form-label">Fecha</label><input type="date" name="fecha" class="form-control" value="@DateTime.Today.ToString("yyyy-MM-dd")" min="@d.FechaDesembolso.ToString("yyyy-MM-dd")" required /></div>
+                    <div class="col-6"><label class="form-label">Pago total</label><input type="number" name="montoTotal" id="pgTotal" class="form-control" min="1" step=".01" required oninput="sugerirDistribucion(false)" value="@(d.CuotaEstimada?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) ?? "")" /></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-4"><label class="form-label">Capital</label><input type="number" name="capital" id="pgCapital" class="form-control" min="0" step=".01" value="0" /></div>
+                    <div class="col-4"><label class="form-label">Interes</label><input type="number" name="interes" id="pgInteres" class="form-control" min="0" step=".01" value="0" /></div>
+                    <div class="col-4"><label class="form-label">Costos</label><input type="number" name="costos" id="pgCostos" class="form-control" min="0" step=".01" value="0" /></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-7">
+                        <label class="form-label">Efecto del abono</label>
+                        <select name="efectoAbono" id="pgEfectoAbono" class="form-select">
+                            <option value="no_aplica">No aplica</option>
+                            <option value="reducir_plazo">Reducir plazo</option>
+                            <option value="reducir_cuota">Reducir cuota</option>
+                        </select>
+                    </div>
+                    <div class="col-5 d-flex align-items-end">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="esExtraordinario" value="true" id="pgExtraordinario" />
+                            <label class="form-check-label small" for="pgExtraordinario">Extraordinario</label>
+                        </div>
+                    </div>
+                    <div class="form-text">Usalo cuando pagues mas capital para bajar tiempo o cuota.</div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6"><label class="form-label">Moneda</label><select name="monedaCodigo" class="form-select">@foreach(var moneda in Model.Monedas){if(moneda.Codigo==d.MonedaCodigo){<option value="@moneda.Codigo" selected>@moneda.Codigo</option>}else{<option value="@moneda.Codigo">@moneda.Codigo</option>}}</select></div>
+                    <div class="col-6"><label class="form-label">Tasa manual</label><input type="number" name="tasaConversion" class="form-control" min="0" step="0.000001" placeholder="Opcional" /></div>
+                </div>
+                <div class="mb-3"><label class="form-label">Cuenta de pago</label><select name="cuentaPagoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){if(c.Id==d.CuentaPagoId){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select></div>
+                <div class="mb-3"><label class="form-label">Notas</label><input name="notas" class="form-control" maxlength="300" /></div>
+                <button class="btn btn-primary w-100" @(d.Estado=="pagada"?"disabled":"")><i class="bi bi-check-lg"></i> Registrar pago</button>
+                <div class="form-text mt-2">Sugerido: interes mensual @M(d.InteresMensualEstimado, Model.MonedaBase). Puedes ajustar la distribucion real del extracto.</div>
+            </form>
+        </div>
+    </div>
+    <div class="col-12 col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header fw-bold"><i class="bi bi-clock-history"></i> Historial de pagos</div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light"><tr><th>Fecha</th><th class="text-end">Total</th><th class="text-end d-none d-md-table-cell">Capital</th><th class="text-end d-none d-md-table-cell">Interes</th><th class="text-end d-none d-md-table-cell">Costos</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach(var p in Model.Pagos)
+                    {
+                        <tr><td>@p.Fecha.ToString("dd MMM yyyy")<small class="d-block text-muted">@p.Notas</small>@if(p.Capital>0){<small class="d-block text-muted">@p.EfectoAbonoTexto@if(p.EsExtraordinario){<span> · Extraordinario</span>}</small>}</td><td class="text-end fw-bold">@M(p.MontoOriginal,p.MonedaCodigo)@if(p.MonedaCodigo!=p.MonedaBaseCodigo){<small class="d-block text-muted">@M(p.MontoTotal,p.MonedaBaseCodigo)</small>}</td><td class="text-end d-none d-md-table-cell text-success">@M(p.Capital,Model.MonedaBase)</td><td class="text-end d-none d-md-table-cell text-warning">@M(p.Interes,Model.MonedaBase)</td><td class="text-end d-none d-md-table-cell">@M(p.Costos,Model.MonedaBase)</td><td class="text-end"><form method="post" asp-action="EliminarPago" onsubmit="return confirm('Eliminar pago?')">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@p.Id"/><input type="hidden" name="deudaId" value="@d.Id"/><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form></td></tr>
+                    }
+                    @if(!Model.Pagos.Any()){<tr><td colspan="6" class="text-center text-muted py-4">Sin pagos registrados.</td></tr>}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalEditar" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@d.Id" />
+            <div class="modal-header"><h5 class="modal-title">Editar deuda</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-12 col-md-6"><label class="form-label">Acreedor</label><input name="acreedor" class="form-control" value="@d.Acreedor" required /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Tipo</label><select name="tipo" class="form-select">@foreach(var t in new[] {("banco","Banco"),("persona","Persona"),("vehiculo","Vehiculo"),("hipotecario","Hipotecario"),("libranza","Libranza"),("tarjeta","Tarjeta / cupo"),("otro","Otra deuda")}){if(d.Tipo==t.Item1){<option value="@t.Item1" selected>@t.Item2</option>}else{<option value="@t.Item1">@t.Item2</option>}}</select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Fecha</label><input type="date" name="fechaDesembolso" class="form-control" value="@d.FechaDesembolso.ToString("yyyy-MM-dd")" required /></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3"><label class="form-label">Capital</label><input type="number" name="capitalInicial" class="form-control" value="@d.CapitalOriginal.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" required /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Moneda</label><select name="monedaCodigo" class="form-select">@foreach(var moneda in Model.Monedas){if(moneda.Codigo==d.MonedaCodigo){<option value="@moneda.Codigo" selected>@moneda.Codigo</option>}else{<option value="@moneda.Codigo">@moneda.Codigo</option>}}</select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Tasa conversion</label><input type="number" name="tasaConversion" class="form-control" value="@(d.TasaConversion == 1 ? "" : d.TasaConversion.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture))" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Plazo meses</label><input type="number" name="plazoMeses" class="form-control" value="@d.PlazoMeses" /></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3"><label class="form-label">Sistema</label><select name="sistemaPago" class="form-select"><option value="cuota_fija" selected="@(d.SistemaPago=="cuota_fija")">Cuota fija</option><option value="solo_intereses" selected="@(d.SistemaPago=="solo_intereses")">Solo intereses</option><option value="abonos_libres" selected="@(d.SistemaPago=="abonos_libres")">Abonos libres</option><option value="sin_interes" selected="@(d.SistemaPago=="sin_interes")">Sin intereses</option></select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Tasa</label><input type="number" name="tasa" class="form-control" value="@d.Tasa.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Periodo</label><select name="periodoTasa" class="form-select"><option value="mensual" selected="@(d.PeriodoTasa=="mensual")">Mensual</option><option value="anual" selected="@(d.PeriodoTasa=="anual")">Anual</option></select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Dia pago</label><input type="number" name="diaPago" class="form-control" value="@d.DiaPago" min="1" max="31" /></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3"><label class="form-label">Proxima fecha</label><input type="date" name="proximaFechaPago" class="form-control" value="@(d.ProximaFechaPago?.ToString("yyyy-MM-dd"))" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Cuota estimada</label><input type="number" name="cuotaEstimada" class="form-control" value="@(d.CuotaEstimada?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Cuenta recibio</label><select name="cuentaDesembolsoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){if(c.Id==d.CuentaDesembolsoId){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Cuenta pago</label><select name="cuentaPagoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){if(c.Id==d.CuentaPagoId){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select></div>
+                </div>
+                <label class="form-label">Notas</label><textarea name="notas" class="form-control" rows="2">@d.Notas</textarea>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar cambios</button></div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const saldoCapital=@d.SaldoCapital.ToString(System.Globalization.CultureInfo.InvariantCulture);
+const interesSugerido=@d.InteresMensualEstimado.ToString(System.Globalization.CultureInfo.InvariantCulture);
+const capitalInicialDeuda=@d.CapitalInicial.ToString(System.Globalization.CultureInfo.InvariantCulture);
+const tasaMensualDeuda=@d.TasaMensualEquivalente.ToString(System.Globalization.CultureInfo.InvariantCulture);
+const cuotaEstimadaDeuda=@((d.CuotaEstimada ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture));
+const plazoMesesDeuda=@d.PlazoMeses;
+const pagosDeuda=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Pagos.OrderBy(x => x.Fecha).ThenBy(x => x.Id).Select(x => new
+{
+    fecha = x.Fecha.ToString("yyyy-MM-dd"),
+    etiqueta = x.Fecha.ToString("dd MMM"),
+    total = x.MontoTotal,
+    capital = x.Capital,
+    interes = x.Interes,
+    costos = x.Costos
+})));
+const fmtDeuda=new Intl.NumberFormat('es-CO',{style:'currency',currency:'@Model.MonedaBase',maximumFractionDigits:0});
+function n(v){return Number((v||'').toString().replace(/\./g,'').replace(',','.'))||0;}
+function sugerirDistribucion(forzar=true){
+ const total=n(document.getElementById('pgTotal').value);
+ if(!forzar && (n(document.getElementById('pgCapital').value)||n(document.getElementById('pgInteres').value)||n(document.getElementById('pgCostos').value))) return;
+ const interes=Math.min(total,interesSugerido);
+ const capital=Math.min(Math.max(0,total-interes),saldoCapital);
+ document.getElementById('pgInteres').value=Math.round(interes);
+ document.getElementById('pgCapital').value=Math.round(capital);
+ document.getElementById('pgCostos').value=Math.max(0,Math.round(total-interes-capital));
+ actualizarEfectoAbono();
+}
+function actualizarEfectoAbono(){
+ const tieneCapital=n(document.getElementById('pgCapital').value)>0;
+ document.getElementById('pgEfectoAbono').disabled=!tieneCapital;
+ document.getElementById('pgExtraordinario').disabled=!tieneCapital;
+ if(!tieneCapital){
+  document.getElementById('pgEfectoAbono').value='no_aplica';
+  document.getElementById('pgExtraordinario').checked=false;
+ }
+}
+document.getElementById('pgCapital').addEventListener('input',actualizarEfectoAbono);
+sugerirDistribucion(true);
+const accion=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(ViewBag.AccionCalendario ?? ""));
+if(accion==='pago') document.getElementById('formPagoDeuda').scrollIntoView({behavior:'smooth',block:'center'});
+function pintarGraficasDeuda(){
+ if(!window.Chart) return;
+ let saldo=capitalInicialDeuda;
+ const labels=['Inicio'];
+ const saldos=[saldo];
+ pagosDeuda.forEach(pago=>{
+  saldo=Math.max(0,saldo-Number(pago.capital||0));
+  labels.push(pago.etiqueta);
+  saldos.push(saldo);
+ });
+ new Chart(document.getElementById('graficaDeudaSaldo'),{
+  type:'line',
+  data:{labels,datasets:[{label:'Saldo capital',data:saldos,borderColor:'#7C3AED',backgroundColor:'rgba(124,58,237,.12)',fill:true,tension:.35}]},
+  options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmtDeuda.format(v)}}}}
+ });
+ const capital=pagosDeuda.reduce((a,x)=>a+Number(x.capital||0),0);
+ const interes=pagosDeuda.reduce((a,x)=>a+Number(x.interes||0),0);
+ const costos=pagosDeuda.reduce((a,x)=>a+Number(x.costos||0),0);
+ new Chart(document.getElementById('graficaDeudaComposicion'),{
+  type:'doughnut',
+  data:{labels:['Capital','Interes','Costos'],datasets:[{data:[capital,interes,costos],backgroundColor:['#22C55E','#D4AF37','#EF4444'],borderWidth:0}]},
+  options:{plugins:{legend:{position:'bottom'}}}
+ });
+}
+function simularAbonoDeuda(){
+ const abono=Number(document.getElementById('simAbonoDeuda').value||0);
+ const efecto=document.getElementById('simEfectoDeuda').value;
+ const nuevoSaldo=Math.max(0,saldoCapital-abono);
+ const interesNuevo=Math.round(nuevoSaldo*tasaMensualDeuda/100);
+ let detalle='Ingresa un abono extra para estimar el impacto.';
+ if(abono>0){
+  detalle=`Saldo despues del abono: <strong>${fmtDeuda.format(nuevoSaldo)}</strong>. Interes mensual estimado: <strong>${fmtDeuda.format(interesNuevo)}</strong>.`;
+  if(efecto==='reducir_plazo' && cuotaEstimadaDeuda>interesNuevo){
+   const mesesAntes=Math.ceil(nuevoSaldo/Math.max(1,cuotaEstimadaDeuda-interesNuevo));
+   detalle+=` Manteniendo una cuota cercana a ${fmtDeuda.format(cuotaEstimadaDeuda)}, el plazo estimado bajaria a unos <strong>${mesesAntes} meses</strong>.`;
+  }else if(efecto==='reducir_cuota' && plazoMesesDeuda>0){
+   const cuotaNueva=Math.ceil((nuevoSaldo/plazoMesesDeuda)+interesNuevo);
+   detalle+=` Manteniendo el plazo, la cuota orientativa podria bajar a <strong>${fmtDeuda.format(cuotaNueva)}</strong>.`;
+  }else{
+   detalle+=' El ahorro real dependera de como la entidad recalcule el credito.';
+  }
+ }
+ document.getElementById('simResultadoDeuda').innerHTML=detalle;
+}
+pintarGraficasDeuda();
+</script>
+}

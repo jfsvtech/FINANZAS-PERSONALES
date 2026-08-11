@@ -159,7 +159,8 @@ public class PrestamosController : BaseController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult RegistrarPago(int prestamoId, DateTime fecha, string tipo, decimal monto, string? notas, string monedaCodigo = "COP", decimal? tasaConversion = null)
+    public IActionResult RegistrarPago(int prestamoId, DateTime fecha, string tipo, decimal monto, string? notas,
+        string efectoAbono = "no_aplica", bool esExtraordinario = false, string monedaCodigo = "COP", decimal? tasaConversion = null)
     {
         if (monto <= 0 || tipo is not ("abono_capital" or "pago_interes")) return BadRequest();
 
@@ -183,6 +184,7 @@ public class PrestamosController : BaseController
         catch (Exception ex) { TempData["Error"] = ex.Message; return RedirectToAction("Detalle", new { id = prestamoId }); }
         if (tipo == "abono_capital")
         {
+            efectoAbono = NormalizarEfectoAbono(efectoAbono);
             var abonado = con.ExecuteScalar<decimal?>(
                 @"SELECT SUM(monto) FROM prestamo_pagos
                   WHERE prestamo_id=@prestamoId AND usuario_id=@UsuarioId AND tipo='abono_capital'",
@@ -194,11 +196,18 @@ public class PrestamosController : BaseController
                 return RedirectToAction("Detalle", new { id = prestamoId });
             }
         }
+        else
+        {
+            efectoAbono = "no_aplica";
+            esExtraordinario = false;
+        }
 
         con.Execute(
-            @"INSERT INTO prestamo_pagos (usuario_id, prestamo_id, fecha, tipo, monto, monto_original, moneda_codigo, tasa_conversion, moneda_base_codigo, notas)
-              VALUES (@UsuarioId, @prestamoId, @fecha, @tipo, @montoBase, @montoOriginal, @monedaCodigo, @tasa, @monedaBase, @notas)",
-            new { UsuarioId, prestamoId, fecha, tipo, montoBase = conversion.MontoBase, montoOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, monedaBase = conversion.MonedaDestino, notas });
+            @"INSERT INTO prestamo_pagos (usuario_id, prestamo_id, fecha, tipo, monto, monto_original, moneda_codigo,
+                         tasa_conversion, moneda_base_codigo, efecto_abono, es_extraordinario, notas)
+              VALUES (@UsuarioId, @prestamoId, @fecha, @tipo, @montoBase, @montoOriginal, @monedaCodigo,
+                         @tasa, @monedaBase, @efectoAbono, @esExtraordinario, @notas)",
+            new { UsuarioId, prestamoId, fecha, tipo, montoBase = conversion.MontoBase, montoOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, monedaBase = conversion.MonedaDestino, efectoAbono, esExtraordinario, notas });
 
         ActualizarEstado(con, prestamoId);
         TempData["Ok"] = tipo == "abono_capital" ? "Abono a capital registrado." : "Pago de interes registrado.";
@@ -262,6 +271,8 @@ public class PrestamosController : BaseController
                            COALESCE(moneda_codigo,'COP') AS MonedaCodigo,
                            COALESCE(tasa_conversion,1) AS TasaConversion,
                            COALESCE(moneda_base_codigo,'COP') AS MonedaBaseCodigo,
+                           COALESCE(efecto_abono,'no_aplica') AS EfectoAbono,
+                           COALESCE(es_extraordinario,FALSE) AS EsExtraordinario,
                            notas
                     FROM prestamo_pagos WHERE usuario_id=@UsuarioId";
         if (prestamoId.HasValue) sql += " AND prestamo_id=@prestamoId";
@@ -292,5 +303,11 @@ public class PrestamosController : BaseController
         {
             throw new InvalidOperationException(ex.Message);
         }
+    }
+
+    private static string NormalizarEfectoAbono(string? efecto)
+    {
+        efecto = (efecto ?? "").Trim().ToLowerInvariant();
+        return efecto is "reducir_plazo" or "reducir_cuota" ? efecto : "no_aplica";
     }
 }

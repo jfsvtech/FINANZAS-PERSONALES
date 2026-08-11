@@ -412,8 +412,16 @@ public class PrestamoPago
     public string MonedaCodigo { get; set; } = "COP";
     public decimal TasaConversion { get; set; } = 1;
     public string MonedaBaseCodigo { get; set; } = "COP";
+    public string EfectoAbono { get; set; } = "no_aplica";
+    public bool EsExtraordinario { get; set; }
     public string? Notas { get; set; }
     public string TipoTexto => Tipo == "abono_capital" ? "Abono a capital" : "Pago de interes";
+    public string EfectoAbonoTexto => EfectoAbono switch
+    {
+        "reducir_plazo" => "Reduce plazo",
+        "reducir_cuota" => "Reduce cuota",
+        _ => "No aplica"
+    };
 }
 
 public class PrestamosIndexVm
@@ -429,6 +437,112 @@ public class PrestamosIndexVm
     public decimal TotalPrestado => Prestamos.Where(p => p.Estado == "activo").Sum(p => p.Capital);
     public decimal TotalSaldoCapital => Prestamos.Sum(p => p.SaldoCapital);
     public decimal TotalInteresPendiente => Prestamos.Sum(p => p.InteresPendiente);
+}
+
+public class Deuda
+{
+    public int Id { get; set; }
+    public int UsuarioId { get; set; }
+    public string Acreedor { get; set; } = "";
+    public string Tipo { get; set; } = "personal";
+    public DateTime FechaDesembolso { get; set; }
+    public decimal CapitalInicial { get; set; }
+    public decimal CapitalOriginal { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public decimal TasaConversion { get; set; } = 1;
+    public string MonedaBaseCodigo { get; set; } = "COP";
+    public decimal Tasa { get; set; }
+    public string PeriodoTasa { get; set; } = "mensual";
+    public string SistemaPago { get; set; } = "cuota_fija";
+    public int PlazoMeses { get; set; }
+    public int? DiaPago { get; set; }
+    public DateTime? ProximaFechaPago { get; set; }
+    public decimal? CuotaEstimada { get; set; }
+    public int? CuentaDesembolsoId { get; set; }
+    public int? CuentaPagoId { get; set; }
+    public string? Notas { get; set; }
+    public string Estado { get; set; } = "activa";
+    public string? CuentaDesembolsoNombre { get; set; }
+    public string? CuentaPagoNombre { get; set; }
+    public decimal CapitalPagado { get; set; }
+    public decimal InteresPagado { get; set; }
+    public decimal CostosPagados { get; set; }
+    public decimal TotalPagado { get; set; }
+    public decimal SaldoCapital => Math.Max(0, CapitalInicial - CapitalPagado);
+    public decimal Avance => CapitalInicial > 0 ? Math.Round(CapitalPagado * 100 / CapitalInicial, 1) : 0;
+    public decimal TasaMensualEquivalente => PeriodoTasa == "anual"
+        ? (decimal)(Math.Pow(1d + (double)Tasa / 100d, 1d / 12d) - 1d) * 100m
+        : Tasa;
+    public decimal InteresMensualEstimado => Math.Round(SaldoCapital * TasaMensualEquivalente / 100m, 0);
+    public string TipoTexto => Tipo switch
+    {
+        "banco" => "Banco",
+        "persona" => "Persona",
+        "vehiculo" => "Vehiculo",
+        "hipotecario" => "Hipotecario",
+        "libranza" => "Libranza",
+        "tarjeta" => "Tarjeta / cupo",
+        _ => "Otra deuda"
+    };
+    public string SistemaPagoTexto => SistemaPago switch
+    {
+        "cuota_fija" => "Cuota fija",
+        "solo_intereses" => "Solo intereses + capital final",
+        "abonos_libres" => "Abonos libres",
+        "sin_interes" => "Sin intereses",
+        _ => SistemaPago
+    };
+}
+
+public class DeudaPago
+{
+    public int Id { get; set; }
+    public int UsuarioId { get; set; }
+    public int DeudaId { get; set; }
+    public DateTime Fecha { get; set; }
+    public decimal MontoTotal { get; set; }
+    public decimal Capital { get; set; }
+    public decimal Interes { get; set; }
+    public decimal Costos { get; set; }
+    public decimal MontoOriginal { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public decimal TasaConversion { get; set; } = 1;
+    public string MonedaBaseCodigo { get; set; } = "COP";
+    public int? CuentaPagoId { get; set; }
+    public string? CuentaPagoNombre { get; set; }
+    public string EfectoAbono { get; set; } = "no_aplica";
+    public bool EsExtraordinario { get; set; }
+    public string? Notas { get; set; }
+    public string EfectoAbonoTexto => EfectoAbono switch
+    {
+        "reducir_plazo" => "Reduce plazo",
+        "reducir_cuota" => "Reduce cuota",
+        _ => "No aplica"
+    };
+}
+
+public class DeudasIndexVm
+{
+    public List<Deuda> Deudas { get; set; } = new();
+    public List<Cuenta> Cuentas { get; set; } = new();
+    public List<Moneda> Monedas { get; set; } = new();
+    public string MonedaBase { get; set; } = "COP";
+    public string? FiltroEstado { get; set; }
+    public string? FiltroTipo { get; set; }
+    public decimal TotalCapitalInicial => Deudas.Sum(x => x.CapitalInicial);
+    public decimal TotalSaldoCapital => Deudas.Where(x => x.Estado == "activa").Sum(x => x.SaldoCapital);
+    public decimal TotalInteresPagado => Deudas.Sum(x => x.InteresPagado);
+    public decimal TotalPagado => Deudas.Sum(x => x.TotalPagado);
+    public int Activas => Deudas.Count(x => x.Estado == "activa");
+}
+
+public class DeudaDetalleVm
+{
+    public Deuda Deuda { get; set; } = new();
+    public List<DeudaPago> Pagos { get; set; } = new();
+    public List<Cuenta> Cuentas { get; set; } = new();
+    public List<Moneda> Monedas { get; set; } = new();
+    public string MonedaBase { get; set; } = "COP";
 }
 
 public class PrestamoDetalleVm

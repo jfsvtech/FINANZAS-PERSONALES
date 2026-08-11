@@ -78,6 +78,38 @@
     </div>
 }
 
+<div class="row g-3 mb-3">
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-graph-down-arrow"></i> Evolucion del capital</div>
+            <div class="card-body"><canvas id="graficaPrestamoSaldo" style="max-height:220px"></canvas></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-pie-chart"></i> Capital vs interes</div>
+            <div class="card-body"><canvas id="graficaPrestamoComposicion" style="max-height:220px"></canvas></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-lightning-charge"></i> Simular abono</div>
+            <div class="card-body">
+                <label class="form-label small">Abono extra a capital</label>
+                <input type="number" id="simAbonoPrestamo" class="form-control mb-2" min="0" step="1" placeholder="Ej. 500000" />
+                <select id="simEfectoPrestamo" class="form-select mb-2">
+                    <option value="reducir_plazo">Mantener cuota y reducir plazo</option>
+                    <option value="reducir_cuota">Mantener plazo y reducir cuota</option>
+                </select>
+                <button type="button" class="btn btn-outline-primary w-100" onclick="simularAbonoPrestamo()">Calcular impacto</button>
+                <div id="simResultadoPrestamo" class="alert alert-light border small mt-3 mb-0">
+                    Simula cuanto baja el saldo y el interes mensual cuando recibes un abono.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row g-3">
     <div class="col-12 col-lg-4">
         <div class="card border-0 shadow-sm">
@@ -106,6 +138,23 @@
                         <label class="form-label">Monto</label>
                         <input type="number" name="monto" id="pgMonto" class="form-control" min="1" step="1" inputmode="numeric" required />
                     </div>
+                </div>
+                <div class="row g-2 mb-3" id="bloqueEfectoAbono">
+                    <div class="col-7">
+                        <label class="form-label">Efecto del abono</label>
+                        <select name="efectoAbono" id="pgEfectoAbono" class="form-select">
+                            <option value="no_aplica">No aplica</option>
+                            <option value="reducir_plazo">Reducir plazo</option>
+                            <option value="reducir_cuota">Reducir cuota</option>
+                        </select>
+                    </div>
+                    <div class="col-5 d-flex align-items-end">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="esExtraordinario" value="true" id="pgExtraordinario" />
+                            <label class="form-check-label small" for="pgExtraordinario">Extraordinario</label>
+                        </div>
+                    </div>
+                    <div class="form-text">Este dato ayuda a analizar si el abono busca terminar antes o bajar la cuota.</div>
                 </div>
                 <div class="row g-2 mb-3">
                     <div class="col-6">
@@ -153,6 +202,10 @@
                             <td>
                                 @if (pago.Tipo == "abono_capital") { <span class="badge text-bg-success">Abono a capital</span> }
                                 else { <span class="badge text-bg-warning">Pago de interes</span> }
+                                @if (pago.Tipo == "abono_capital")
+                                {
+                                    <small class="d-block text-muted">@pago.EfectoAbonoTexto@if(pago.EsExtraordinario){<span> · Extraordinario</span>}</small>
+                                }
                             </td>
                             <td class="text-end fw-bold">@M(pago.MontoOriginal, pago.MonedaCodigo)@if(pago.MonedaCodigo != pago.MonedaBaseCodigo){<small class="d-block text-muted">@M(pago.Monto, pago.MonedaBaseCodigo)</small>}</td>
                             <td class="d-none d-md-table-cell text-muted small">@pago.Notas</td>
@@ -252,11 +305,27 @@
 <script>
     const interesPendiente = @p.InteresPendiente.ToString(System.Globalization.CultureInfo.InvariantCulture);
     const saldoCapital = @p.SaldoCapital.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    const capitalInicialPrestamo = @p.Capital.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    const tasaMensualPrestamo = @p.TasaMensual.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    const interesMensualPrestamo = @p.InteresMensualActual.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    const pagosPrestamo = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Pagos.OrderBy(x => x.Fecha).ThenBy(x => x.Id).Select(x => new
+    {
+        fecha = x.Fecha.ToString("yyyy-MM-dd"),
+        etiqueta = x.Fecha.ToString("dd MMM"),
+        tipo = x.Tipo,
+        monto = x.Monto
+    })));
+    const fmtPrestamo = new Intl.NumberFormat('es-CO', { style: 'currency', currency: '@Model.MonedaBase', maximumFractionDigits: 0 });
 
     // Sugiere el monto segun el tipo: interes pendiente o saldo del capital.
     function sugerirMonto() {
         const esAbono = document.getElementById('tipoAbono').checked;
         document.getElementById('pgMonto').value = esAbono ? saldoCapital : (interesPendiente > 0 ? interesPendiente : '');
+        document.getElementById('bloqueEfectoAbono').classList.toggle('d-none', !esAbono);
+        if (!esAbono) {
+            document.getElementById('pgEfectoAbono').value = 'no_aplica';
+            document.getElementById('pgExtraordinario').checked = false;
+        }
     }
     sugerirMonto();
     const accionCalendario=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["accion"].ToString()));
@@ -274,5 +343,43 @@
         tasa.readOnly = sinInteres;
     }
     toggleEditarInteres();
+
+    function pintarGraficasPrestamo() {
+        if (!window.Chart) return;
+        let saldo = capitalInicialPrestamo;
+        const labels = ['Inicio'];
+        const saldos = [saldo];
+        pagosPrestamo.forEach(pago => {
+            if (pago.tipo === 'abono_capital') saldo = Math.max(0, saldo - Number(pago.monto || 0));
+            labels.push(pago.etiqueta);
+            saldos.push(saldo);
+        });
+        new Chart(document.getElementById('graficaPrestamoSaldo'), {
+            type: 'line',
+            data: { labels, datasets: [{ label: 'Saldo capital', data: saldos, borderColor: '#7C3AED', backgroundColor: 'rgba(124,58,237,.12)', fill: true, tension: .35 }] },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => fmtPrestamo.format(v) } } } }
+        });
+        const capital = pagosPrestamo.filter(x => x.tipo === 'abono_capital').reduce((a, x) => a + Number(x.monto || 0), 0);
+        const interes = pagosPrestamo.filter(x => x.tipo === 'pago_interes').reduce((a, x) => a + Number(x.monto || 0), 0);
+        new Chart(document.getElementById('graficaPrestamoComposicion'), {
+            type: 'doughnut',
+            data: { labels: ['Capital recibido', 'Interes cobrado'], datasets: [{ data: [capital, interes], backgroundColor: ['#22C55E', '#D4AF37'], borderWidth: 0 }] },
+            options: { plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+
+    function simularAbonoPrestamo() {
+        const abono = Number(document.getElementById('simAbonoPrestamo').value || 0);
+        const efecto = document.getElementById('simEfectoPrestamo').value;
+        const nuevoSaldo = Math.max(0, saldoCapital - abono);
+        const nuevoInteres = Math.round(nuevoSaldo * tasaMensualPrestamo / 100);
+        let detalle = `Saldo despues del abono: <strong>${fmtPrestamo.format(nuevoSaldo)}</strong>. Interes mensual estimado: <strong>${fmtPrestamo.format(nuevoInteres)}</strong>.`;
+        if (abono <= 0) detalle = 'Ingresa un abono extra para estimar el impacto.';
+        else if (efecto === 'reducir_plazo') detalle += ' Si la persona mantiene el mismo esfuerzo de pago, recuperas el capital antes.';
+        else detalle += ' Si mantiene el plazo, el cobro periodico podria bajar desde el siguiente recalculo.';
+        document.getElementById('simResultadoPrestamo').innerHTML = detalle;
+    }
+
+    pintarGraficasPrestamo();
 </script>
 }

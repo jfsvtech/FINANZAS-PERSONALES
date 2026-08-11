@@ -73,7 +73,8 @@ public class RecordatoriosEmailHostedService : BackgroundService
 
         var enviados = 0;
         foreach (var recordatorio in ObtenerRecordatoriosPeriodicos(con, hoy, diasAntesPorDefecto)
-                     .Concat(ObtenerRecordatoriosPrestamos(con, hoy, diasAntesPorDefecto)))
+                     .Concat(ObtenerRecordatoriosPrestamos(con, hoy, diasAntesPorDefecto))
+                     .Concat(ObtenerRecordatoriosDeudas(con, hoy, diasAntesPorDefecto)))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -225,6 +226,42 @@ public class RecordatoriosEmailHostedService : BackgroundService
         }
     }
 
+    private static IEnumerable<RecordatorioEmailPendiente> ObtenerRecordatoriosDeudas(
+        System.Data.IDbConnection con, DateTime hoy, int diasAntesPorDefecto)
+    {
+        var items = con.Query<RecordatorioDeudaDb>(
+            @"SELECT d.id AS Id, d.usuario_id AS UsuarioId, d.acreedor, d.proxima_fecha_pago AS FechaEvento,
+                     COALESCE(d.cuota_estimada, GREATEST(0, d.capital_inicial - COALESCE((
+                         SELECT SUM(dp.capital) FROM deuda_pagos dp WHERE dp.deuda_id=d.id AND dp.usuario_id=d.usuario_id
+                     ),0))) AS Monto,
+                     COALESCE(d.moneda_codigo, u.moneda_codigo, 'COP') AS MonedaCodigo,
+                     u.email AS UsuarioEmail, u.nombre_completo AS UsuarioNombre
+              FROM deudas d
+              JOIN usuarios u ON u.id=d.usuario_id
+              LEFT JOIN configuraciones_usuario cu ON cu.usuario_id=d.usuario_id
+              WHERE d.estado IN ('activa','vencida')
+                AND d.proxima_fecha_pago IS NOT NULL
+                AND u.activo=TRUE
+                AND COALESCE(cu.recordatorios_email_activos, TRUE)=TRUE
+                AND d.proxima_fecha_pago BETWEEN @hoy
+                    AND (@hoy + (COALESCE(cu.recordatorios_email_dias_antes, @diasAntesPorDefecto) || ' days')::interval)",
+            new { hoy, diasAntesPorDefecto });
+
+        foreach (var item in items)
+        {
+            var asunto = $"Recordatorio de pago: {item.Acreedor} - {item.FechaEvento:dd/MM/yyyy}";
+            var detalle = $"Tienes programado un pago o abono de deuda con {item.Acreedor} para el {item.FechaEvento:dd/MM/yyyy}.";
+            yield return new RecordatorioEmailPendiente(
+                item.UsuarioId,
+                "deuda-pago",
+                item.Id,
+                item.FechaEvento.Date,
+                item.UsuarioEmail,
+                asunto,
+                CrearHtml("Recordatorio de deuda", item.Acreedor, detalle, item.Monto, item.MonedaCodigo, "Gestion de Prestamos"));
+        }
+    }
+
     private static DateTime ProximaFechaPorDia(int dia, DateTime desde)
     {
         var diaMes = Math.Min(dia, DateTime.DaysInMonth(desde.Year, desde.Month));
@@ -344,5 +381,17 @@ public class RecordatoriosEmailHostedService : BackgroundService
         public string UsuarioNombre { get; set; } = "";
         public decimal SaldoCapital { get; set; }
         public int DiasAntes { get; set; } = 3;
+    }
+
+    private sealed class RecordatorioDeudaDb
+    {
+        public int Id { get; set; }
+        public int UsuarioId { get; set; }
+        public string Acreedor { get; set; } = "";
+        public DateTime FechaEvento { get; set; }
+        public decimal Monto { get; set; }
+        public string MonedaCodigo { get; set; } = "COP";
+        public string UsuarioEmail { get; set; } = "";
+        public string UsuarioNombre { get; set; } = "";
     }
 }

@@ -105,6 +105,26 @@ public class CalendarioController : BaseController
                 Detalle="Fecha esperada de retorno",Monto=x.CapitalInicial,Controller="Inversiones",Action="Detalle",
                 RouteId=x.Id,AccionTexto="Registrar rendimiento",Color=x.Color
             }));
+        eventos.AddRange(con.Query<Deuda>(
+            @"SELECT id,acreedor,proxima_fecha_pago AS ProximaFechaPago,cuota_estimada AS CuotaEstimada,
+                     capital_inicial AS CapitalInicial
+              FROM deudas WHERE usuario_id=@UsuarioId AND estado IN ('activa','vencida')
+              AND proxima_fecha_pago BETWEEN @desde AND @hasta",
+            new { UsuarioId, desde, hasta })
+            .Select(x => new EventoFinancieroVm
+            {
+                Fecha = x.ProximaFechaPago!.Value,
+                Tipo = "deuda",
+                Icono = "bi-building-lock",
+                Titulo = $"Pago deuda: {x.Acreedor}",
+                Detalle = "Cuota o abono programado",
+                Monto = x.CuotaEstimada,
+                Controller = "Deudas",
+                Action = "Detalle",
+                RouteId = x.Id,
+                AccionTexto = "Registrar pago",
+                Color = "#D34A56"
+            }));
         foreach (var evento in eventos)
         {
             evento.Url = evento.Tipo switch
@@ -114,6 +134,7 @@ public class CalendarioController : BaseController
                 "prestamo" => Url.Action("Detalle", "Prestamos", new { id=evento.RouteId, accion=evento.Detalle.Contains("capital",StringComparison.OrdinalIgnoreCase) ? "capital" : "interes" }) ?? "",
                 "meta" => Url.Action("Index", "Metas", new { aporte=evento.RouteId }) ?? "",
                 "inversion" => Url.Action("Detalle", "Inversiones", new { id=evento.RouteId, accion="rendimiento" }) ?? "",
+                "deuda" => Url.Action("Detalle", "Deudas", new { id=evento.RouteId, accion="pago" }) ?? "",
                 _ => Url.Action(evento.Action, evento.Controller, new { id=evento.RouteId }) ?? ""
             };
             if (evento.Tipo == "periodico")

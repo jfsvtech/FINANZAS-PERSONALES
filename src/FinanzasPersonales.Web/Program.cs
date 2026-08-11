@@ -227,7 +227,14 @@ using (var scope = app.Services.CreateScope())
                   ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
                   ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
                   ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS efecto_abono VARCHAR(20) NOT NULL DEFAULT 'no_aplica';
+                  ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS es_extraordinario BOOLEAN NOT NULL DEFAULT FALSE;
                   UPDATE prestamo_pagos SET monto_original=monto WHERE monto_original IS NULL;
+                  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_prestamo_pagos_efecto_abono') THEN
+                    ALTER TABLE prestamo_pagos
+                    ADD CONSTRAINT ck_prestamo_pagos_efecto_abono
+                    CHECK (efecto_abono IN ('no_aplica','reducir_plazo','reducir_cuota'));
+                  END IF;
                 END IF;
                 IF to_regclass('public.inversiones') IS NOT NULL THEN
                   ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS capital_original NUMERIC(16,2) NULL;
@@ -474,6 +481,66 @@ using (var scope = app.Services.CreateScope())
               CREATE INDEX IF NOT EXISTS idx_tipos_inversion_usuario ON tipos_inversion (usuario_id);
               CREATE INDEX IF NOT EXISTS idx_inversion_movimientos_inversion ON inversion_movimientos (inversion_id, fecha);
               CREATE INDEX IF NOT EXISTS idx_inversion_valoraciones_inversion ON inversion_valoraciones (inversion_id, fecha)");
+        con.Execute(
+            @"CREATE TABLE IF NOT EXISTS deudas (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                  acreedor VARCHAR(140) NOT NULL,
+                  tipo VARCHAR(30) NOT NULL DEFAULT 'personal',
+                  fecha_desembolso DATE NOT NULL,
+                  capital_inicial NUMERIC(16,2) NOT NULL CHECK (capital_inicial > 0),
+                  capital_original NUMERIC(16,2) NOT NULL,
+                  moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+                  tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
+                  moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+                  tasa NUMERIC(9,4) NOT NULL DEFAULT 0 CHECK (tasa >= 0),
+                  periodo_tasa VARCHAR(10) NOT NULL DEFAULT 'mensual' CHECK (periodo_tasa IN ('mensual','anual')),
+                  sistema_pago VARCHAR(20) NOT NULL DEFAULT 'cuota_fija' CHECK (sistema_pago IN ('cuota_fija','solo_intereses','abonos_libres','sin_interes')),
+                  plazo_meses INT NOT NULL DEFAULT 0 CHECK (plazo_meses BETWEEN 0 AND 600),
+                  dia_pago INT NULL CHECK (dia_pago BETWEEN 1 AND 31),
+                  proxima_fecha_pago DATE NULL,
+                  cuota_estimada NUMERIC(16,2) NULL CHECK (cuota_estimada IS NULL OR cuota_estimada >= 0),
+                  cuenta_desembolso_id INT NULL REFERENCES cuentas(id),
+                  cuenta_pago_id INT NULL REFERENCES cuentas(id),
+                  notas VARCHAR(500) NULL,
+                  estado VARCHAR(15) NOT NULL DEFAULT 'activa' CHECK (estado IN ('activa','pagada','refinanciada','vencida')),
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+              );
+              CREATE TABLE IF NOT EXISTS deuda_pagos (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                  deuda_id INT NOT NULL REFERENCES deudas(id) ON DELETE CASCADE,
+                  fecha DATE NOT NULL,
+                  monto_total NUMERIC(16,2) NOT NULL CHECK (monto_total > 0),
+                  capital NUMERIC(16,2) NOT NULL DEFAULT 0 CHECK (capital >= 0),
+                  interes NUMERIC(16,2) NOT NULL DEFAULT 0 CHECK (interes >= 0),
+                  costos NUMERIC(16,2) NOT NULL DEFAULT 0 CHECK (costos >= 0),
+                  monto_original NUMERIC(16,2) NOT NULL,
+                  moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+                  tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
+                  moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+                  cuenta_pago_id INT NULL REFERENCES cuentas(id),
+                  efecto_abono VARCHAR(20) NOT NULL DEFAULT 'no_aplica' CHECK (efecto_abono IN ('no_aplica','reducir_plazo','reducir_cuota')),
+                  es_extraordinario BOOLEAN NOT NULL DEFAULT FALSE,
+                  notas VARCHAR(300) NULL,
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+              );
+              CREATE INDEX IF NOT EXISTS idx_deudas_usuario_estado_fecha ON deudas (usuario_id, estado, proxima_fecha_pago);
+              CREATE INDEX IF NOT EXISTS idx_deudas_usuario_tipo ON deudas (usuario_id, tipo);
+              CREATE INDEX IF NOT EXISTS idx_deuda_pagos_usuario_deuda_fecha ON deuda_pagos (usuario_id, deuda_id, fecha DESC)");
+        con.Execute(
+            @"DO $$
+              BEGIN
+                IF to_regclass('public.deuda_pagos') IS NOT NULL THEN
+                  ALTER TABLE deuda_pagos ADD COLUMN IF NOT EXISTS efecto_abono VARCHAR(20) NOT NULL DEFAULT 'no_aplica';
+                  ALTER TABLE deuda_pagos ADD COLUMN IF NOT EXISTS es_extraordinario BOOLEAN NOT NULL DEFAULT FALSE;
+                  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_deuda_pagos_efecto_abono') THEN
+                    ALTER TABLE deuda_pagos
+                    ADD CONSTRAINT ck_deuda_pagos_efecto_abono
+                    CHECK (efecto_abono IN ('no_aplica','reducir_plazo','reducir_cuota'));
+                  END IF;
+                END IF;
+              END $$");
         con.Execute("ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS tipo_inversion_id INT NULL REFERENCES tipos_inversion(id)");
         con.Execute("ALTER TABLE inversiones ALTER COLUMN tipo TYPE VARCHAR(80)");
         con.Execute(

@@ -54,7 +54,7 @@ public abstract class BaseController : Controller
     private static string PermisoRequerido(string controller) => controller switch
     {
         "Dashboard" or "Movimientos" or "Importar" or "Periodicos" or "Presupuestos" or "Metas" or "Cuentas" or "Categorias" => "PermisoGastos",
-        "Prestamos" or "Personas" => "PermisoPrestamos",
+        "Prestamos" or "Personas" or "Deudas" => "PermisoPrestamos",
         "Inversiones" or "TiposInversion" => "PermisoInversiones",
         "Directivo" => "PermisoDirectivo",
         "Asistente" => "PermisoAsistente",

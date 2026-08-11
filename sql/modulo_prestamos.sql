@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS prestamo_pagos (
     fecha       DATE          NOT NULL,
     tipo        VARCHAR(15)   NOT NULL CHECK (tipo IN ('abono_capital','pago_interes')),
     monto       NUMERIC(14,2) NOT NULL CHECK (monto > 0),
+    monto_original NUMERIC(14,2) NULL,
+    moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+    tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
+    moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+    efecto_abono VARCHAR(20) NOT NULL DEFAULT 'no_aplica' CHECK (efecto_abono IN ('no_aplica','reducir_plazo','reducir_cuota')),
+    es_extraordinario BOOLEAN NOT NULL DEFAULT FALSE,
     notas       VARCHAR(200)  NULL,
     creado_en   TIMESTAMP     NOT NULL DEFAULT NOW()
 );

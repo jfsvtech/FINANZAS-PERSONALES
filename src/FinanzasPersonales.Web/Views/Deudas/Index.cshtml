@@ -1,0 +1,143 @@
+@model DeudasIndexVm
+@inject PreferenciasUsuarioService Money
+@{
+    ViewBag.Titulo = "Deudas por pagar";
+    string M(decimal valor, string moneda) => Money.FormatoMoneda(valor, moneda);
+    var tipos = new[] {
+        ("banco","Banco"),("persona","Persona"),("vehiculo","Vehiculo"),("hipotecario","Hipotecario"),
+        ("libranza","Libranza"),("tarjeta","Tarjeta / cupo"),("otro","Otra deuda")
+    };
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <span class="page-eyebrow">Prestamos por pagar</span>
+        <h4 class="mb-0"><i class="bi bi-building-lock"></i> Deudas que debo</h4>
+    </div>
+    <button class="btn btn-success btn-sm" onclick="abrirNueva()"><i class="bi bi-plus-lg"></i> Nueva deuda</button>
+</div>
+
+<form method="get" class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Estado</label>
+                <select name="estado" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    @foreach (var estado in new[] { ("activa","Activas"),("vencida","Vencidas"),("pagada","Pagadas"),("refinanciada","Refinanciadas") })
+                    {
+                        if (Model.FiltroEstado == estado.Item1) { <option value="@estado.Item1" selected>@estado.Item2</option> }
+                        else { <option value="@estado.Item1">@estado.Item2</option> }
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Tipo</label>
+                <select name="tipo" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    @foreach (var tipo in tipos)
+                    {
+                        if (Model.FiltroTipo == tipo.Item1) { <option value="@tipo.Item1" selected>@tipo.Item2</option> }
+                        else { <option value="@tipo.Item1">@tipo.Item2</option> }
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-2"><button class="btn btn-outline-primary btn-sm w-100"><i class="bi bi-funnel"></i> Filtrar</button></div>
+            <div class="col-6 col-md-2"><a class="btn btn-outline-secondary btn-sm w-100" asp-action="Index">Limpiar</a></div>
+        </div>
+    </div>
+</form>
+
+<div class="row g-2 mb-3 text-center">
+    <div class="col-6 col-md-3"><div class="mini-stat"><span>Deudas activas</span><strong>@Model.Activas</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat"><span>Capital recibido</span><strong>@M(Model.TotalCapitalInicial, Model.MonedaBase)</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat mini-stat-danger"><span>Saldo por pagar</span><strong>@M(Model.TotalSaldoCapital, Model.MonedaBase)</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat mini-stat-success"><span>Interes pagado</span><strong>@M(Model.TotalInteresPagado, Model.MonedaBase)</strong></div></div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Acreedor</th><th class="d-none d-md-table-cell">Tipo</th><th class="text-end">Capital</th><th class="text-end">Saldo</th><th class="d-none d-md-table-cell">Proximo pago</th><th>Estado</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var deuda in Model.Deudas)
+            {
+                <tr class="@(deuda.Estado == "pagada" ? "table-success" : deuda.Estado == "vencida" ? "table-warning" : "")">
+                    <td>
+                        <strong>@deuda.Acreedor</strong>
+                        <small class="d-block d-md-none text-muted">@deuda.TipoTexto · @deuda.SistemaPagoTexto</small>
+                    </td>
+                    <td class="d-none d-md-table-cell">@deuda.TipoTexto</td>
+                    <td class="text-end">@M(deuda.CapitalOriginal, deuda.MonedaCodigo)@if(deuda.MonedaCodigo != Model.MonedaBase){<small class="d-block text-muted">@M(deuda.CapitalInicial, Model.MonedaBase)</small>}</td>
+                    <td class="text-end fw-bold text-danger">@M(deuda.SaldoCapital, Model.MonedaBase)<small class="d-block text-muted">@deuda.Avance% pagado</small></td>
+                    <td class="d-none d-md-table-cell">@(deuda.ProximaFechaPago?.ToString("dd MMM yyyy") ?? "Sin fecha")</td>
+                    <td>
+                        <span class="badge @(deuda.Estado == "pagada" ? "text-bg-success" : deuda.Estado == "vencida" ? "text-bg-warning" : "text-bg-primary")">@deuda.Estado</span>
+                    </td>
+                    <td class="text-end"><a class="btn btn-sm btn-primary" asp-action="Detalle" asp-route-id="@deuda.Id"><i class="bi bi-clipboard-data"></i> Control</a></td>
+                </tr>
+            }
+            @if (!Model.Deudas.Any())
+            {
+                <tr><td colspan="7" class="text-center text-muted py-4">Aun no tienes deudas por pagar registradas.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalDeuda" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content" method="post" asp-action="Guardar">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="0" />
+            <div class="modal-header"><h5 class="modal-title">Nueva deuda por pagar</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-12 col-md-6"><label class="form-label">Acreedor / entidad</label><input name="acreedor" class="form-control" maxlength="140" required placeholder="Ej: Banco, cooperativa, familiar" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Tipo</label><select name="tipo" class="form-select">@foreach(var t in tipos){<option value="@t.Item1">@t.Item2</option>}</select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Fecha desembolso</label><input type="date" name="fechaDesembolso" id="deFecha" class="form-control" required /></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3"><label class="form-label">Capital recibido</label><input type="number" name="capitalInicial" class="form-control" min="1" step=".01" required /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Moneda</label><select name="monedaCodigo" class="form-select">@foreach(var moneda in Model.Monedas){if(moneda.Codigo==Model.MonedaBase){<option value="@moneda.Codigo" selected>@moneda.Codigo</option>}else{<option value="@moneda.Codigo">@moneda.Codigo</option>}}</select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Tasa conversion</label><input type="number" name="tasaConversion" class="form-control" min="0" step="0.000001" placeholder="Opcional" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Plazo meses</label><input type="number" name="plazoMeses" class="form-control" min="0" max="600" value="0" /></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3"><label class="form-label">Sistema</label><select name="sistemaPago" id="deSistema" class="form-select" onchange="toggleSistema()"><option value="cuota_fija">Cuota fija</option><option value="solo_intereses">Solo intereses</option><option value="abonos_libres">Abonos libres</option><option value="sin_interes">Sin intereses</option></select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Tasa</label><input type="number" name="tasa" id="deTasa" class="form-control" min="0" step=".0001" value="0" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Periodo tasa</label><select name="periodoTasa" class="form-select"><option value="mensual">Mensual</option><option value="anual">Anual</option></select></div>
+                    <div class="col-6 col-md-3 bloque-interes"><label class="form-label">Dia pago</label><input type="number" name="diaPago" id="deDia" class="form-control" min="1" max="31" placeholder="Ej: 15" /></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3"><label class="form-label">Proxima fecha pago</label><input type="date" name="proximaFechaPago" class="form-control" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Cuota estimada</label><input type="number" name="cuotaEstimada" class="form-control" min="0" step=".01" /></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Cuenta recibio</label><select name="cuentaDesembolsoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){<option value="@c.Id">@c.Nombre</option>}</select></div>
+                    <div class="col-6 col-md-3"><label class="form-label">Cuenta pago</label><select name="cuentaPagoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){<option value="@c.Id">@c.Nombre</option>}</select></div>
+                </div>
+                <label class="form-label">Notas</label><textarea name="notas" class="form-control" rows="2" maxlength="500"></textarea>
+                <div class="form-text mt-2">El capital recibido no se trata como ingreso operativo. Los pagos permiten separar capital, interes y costos.</div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar deuda</button></div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const modalDeuda = new bootstrap.Modal(document.getElementById('modalDeuda'));
+function abrirNueva(){document.getElementById('deFecha').value=new Date().toISOString().slice(0,10);modalDeuda.show();}
+function toggleSistema(){
+ const sinInteres=document.getElementById('deSistema').value==='sin_interes';
+ document.querySelectorAll('.bloque-interes').forEach(x=>x.classList.toggle('d-none',sinInteres));
+ const tasa=document.getElementById('deTasa'), dia=document.getElementById('deDia');
+ if(sinInteres){tasa.value=0;dia.value='';}
+ tasa.readOnly=sinInteres;
+}
+if(@(Context.Request.Query["nuevo"] == "true" ? "true" : "false")) abrirNueva();
+toggleSistema();
+</script>
+}
