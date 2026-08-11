@@ -850,6 +850,11 @@ public class PrestamosTableroVm
     public decimal TotalSaldoDeudas => DeudasActivas.Sum(p => p.SaldoCapital);
     public decimal TotalInteresDeudasPagado => Deudas.Sum(p => p.InteresPagado);
     public decimal InteresDeudasMensual => DeudasActivas.Sum(p => p.InteresMensualEstimado);
+    public decimal InteresNetoMensual => InteresMensualEsperado - InteresDeudasMensual;
+    public List<Deuda> DeudasConTasaMensualAlta => DeudasActivas
+        .Where(x => x.PeriodoTasa == "mensual" && x.Tasa >= 10)
+        .OrderByDescending(x => x.Tasa)
+        .ToList();
     public decimal PosicionNeta => TotalSaldoCapital - TotalSaldoDeudas;
 }
 

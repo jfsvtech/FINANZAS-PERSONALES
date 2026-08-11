@@ -99,9 +99,22 @@
     </div></div></div>
     <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
         <div class="small text-muted">Interes neto mensual</div>
-        <div class="fw-bold @((Model.InteresMensualEsperado-Model.InteresDeudasMensual)>=0?"text-success":"text-danger")">@((Model.InteresMensualEsperado-Model.InteresDeudasMensual).ToString("C0"))</div>
+        <div class="fw-bold @(Model.InteresNetoMensual>=0?"text-success":"text-danger")">@Model.InteresNetoMensual.ToString("C0")</div>
+        <div class="text-muted" style="font-size:.72rem;">@Model.InteresMensualEsperado.ToString("C0") - @Model.InteresDeudasMensual.ToString("C0")</div>
     </div></div></div>
 </div>
+
+@if (Model.DeudasConTasaMensualAlta.Any())
+{
+    <div class="alert alert-warning border-0 shadow-sm">
+        <strong><i class="bi bi-exclamation-triangle"></i> Revisa el periodo de tasa en tus deudas.</strong>
+        <div class="small mt-1">
+            Hay deuda(s) registradas con tasa mensual muy alta:
+            @string.Join(", ", Model.DeudasConTasaMensualAlta.Take(3).Select(x => $"{x.Acreedor} {x.Tasa:0.####}% mensual")).
+            Si esa tasa es anual del banco, edita la deuda y cambia <strong>Periodo tasa</strong> a <strong>Anual</strong>.
+        </div>
+    </div>
+}
 
 <div class="row g-3 mb-3">
     <div class="col-12 col-lg-6">
