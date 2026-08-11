@@ -316,6 +316,7 @@
         monto = x.Monto
     })));
     const fmtPrestamo = new Intl.NumberFormat('es-CO', { style: 'currency', currency: '@Model.MonedaBase', maximumFractionDigits: 0 });
+    const leerNumeroPrestamo = value => Number((value || '').toString().replace(/\./g, '').replace(',', '.')) || 0;
 
     // Sugiere el monto segun el tipo: interes pendiente o saldo del capital.
     function sugerirMonto() {
@@ -369,7 +370,7 @@
     }
 
     function simularAbonoPrestamo() {
-        const abono = Number(document.getElementById('simAbonoPrestamo').value || 0);
+        const abono = leerNumeroPrestamo(document.getElementById('simAbonoPrestamo').value);
         const efecto = document.getElementById('simEfectoPrestamo').value;
         const nuevoSaldo = Math.max(0, saldoCapital - abono);
         const nuevoInteres = Math.round(nuevoSaldo * tasaMensualPrestamo / 100);

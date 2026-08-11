@@ -222,7 +222,11 @@ const tasaMensualDeuda=@d.TasaMensualEquivalente.ToString(System.Globalization.C
 const cuotaEstimadaDeuda=@((d.CuotaEstimada ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture));
 const plazoMesesDeuda=@d.PlazoMeses;
 const usaAmortizacionEstimada=@(d.UsaAmortizacionEstimada ? "true" : "false");
+const usaSaldoActualInformado=@(d.UsaSaldoActualInformado ? "true" : "false");
 const saldoCapitalCalculado=@d.SaldoCapital.ToString(System.Globalization.CultureInfo.InvariantCulture);
+const capitalReconocidoDeuda=@d.CapitalReconocido.ToString(System.Globalization.CultureInfo.InvariantCulture);
+const interesPagadoDeuda=@d.InteresPagado.ToString(System.Globalization.CultureInfo.InvariantCulture);
+const costosPagadosDeuda=@d.CostosPagados.ToString(System.Globalization.CultureInfo.InvariantCulture);
 const pagosDeuda=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Pagos.OrderBy(x => x.Fecha).ThenBy(x => x.Id).Select(x => new
 {
     fecha = x.Fecha.ToString("yyyy-MM-dd"),
@@ -267,8 +271,11 @@ function pintarGraficasDeuda(){
   labels.push(pago.etiqueta);
   saldos.push(saldo);
  });
- if(usaAmortizacionEstimada && (!saldos.length || Math.abs(saldos[saldos.length-1]-saldoCapitalCalculado)>1)){
-  labels.push('Estimado hoy');
+ if(Math.abs(saldos[saldos.length-1]-saldoCapitalCalculado)>1){
+  labels.push(usaSaldoActualInformado ? 'Saldo banco hoy' : usaAmortizacionEstimada ? 'Estimado hoy' : 'Hoy');
+  saldos.push(saldoCapitalCalculado);
+ }else if(labels.length===1){
+  labels.push('Hoy');
   saldos.push(saldoCapitalCalculado);
  }
  new Chart(document.getElementById('graficaDeudaSaldo'),{
@@ -276,17 +283,18 @@ function pintarGraficasDeuda(){
   data:{labels,datasets:[{label:'Saldo capital',data:saldos,borderColor:'#7C3AED',backgroundColor:'rgba(124,58,237,.12)',fill:true,tension:.35}]},
   options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmtDeuda.format(v)}}}}
  });
- const capital=pagosDeuda.reduce((a,x)=>a+Number(x.capital||0),0);
- const interes=pagosDeuda.reduce((a,x)=>a+Number(x.interes||0),0);
- const costos=pagosDeuda.reduce((a,x)=>a+Number(x.costos||0),0);
+ const capital=Math.max(capitalReconocidoDeuda,pagosDeuda.reduce((a,x)=>a+Number(x.capital||0),0));
+ const interes=Math.max(interesPagadoDeuda,pagosDeuda.reduce((a,x)=>a+Number(x.interes||0),0));
+ const costos=Math.max(costosPagadosDeuda,pagosDeuda.reduce((a,x)=>a+Number(x.costos||0),0));
+ const saldoPendiente=Math.max(0,saldoCapitalCalculado);
  new Chart(document.getElementById('graficaDeudaComposicion'),{
   type:'doughnut',
-  data:{labels:['Capital','Interes','Costos'],datasets:[{data:[capital,interes,costos],backgroundColor:['#22C55E','#D4AF37','#EF4444'],borderWidth:0}]},
+  data:{labels:['Capital reconocido','Saldo pendiente','Interes pagado','Costos'],datasets:[{data:[capital,saldoPendiente,interes,costos],backgroundColor:['#22C55E','#E15B64','#D4AF37','#EF4444'],borderWidth:0}]},
   options:{plugins:{legend:{position:'bottom'}}}
  });
 }
 function simularAbonoDeuda(){
- const abono=Number(document.getElementById('simAbonoDeuda').value||0);
+ const abono=n(document.getElementById('simAbonoDeuda').value);
  const efecto=document.getElementById('simEfectoDeuda').value;
  const nuevoSaldo=Math.max(0,saldoCapital-abono);
  const interesNuevo=Math.round(nuevoSaldo*tasaMensualDeuda/100);
