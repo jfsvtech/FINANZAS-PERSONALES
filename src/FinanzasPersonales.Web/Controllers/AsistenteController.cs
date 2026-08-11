@@ -33,11 +33,18 @@ public class AsistenteController : BaseController
         _auditoria = auditoria;
     }
 
-    public IActionResult Index() => View(new AsistenteIndexVm
+    public IActionResult Index() => View(CrearVm());
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult Preguntar(string pregunta)
     {
-        Recomendaciones = _asistente.CrearRecomendaciones(UsuarioId),
-        Recordatorios = _asistente.CrearRecordatorios(UsuarioId)
-    });
+        var vm = CrearVm();
+        vm.Pregunta = pregunta?.Trim() ?? "";
+        vm.Respuesta = _asistente.ResponderPregunta(UsuarioId, vm.Pregunta);
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Asistente", "Pregunta financiera", "asistente", null, vm.Pregunta);
+        return View("Index", vm);
+    }
 
     public IActionResult Informe(int? anio, int? mes)
     {
@@ -260,4 +267,13 @@ startxref
         TempData[result.Ok ? "Ok" : "Error"] = result.Message;
         return RedirectToAction("Index");
     }
+
+    private AsistenteIndexVm CrearVm() => new()
+    {
+        Recomendaciones = _asistente.CrearRecomendaciones(UsuarioId),
+        Recordatorios = _asistente.CrearRecordatorios(UsuarioId),
+        DineroSeguro = _asistente.CrearDineroSeguro(UsuarioId),
+        Salud = _asistente.CalcularSaludFinanciera(UsuarioId),
+        Radar = _asistente.CrearRadar(UsuarioId)
+    };
 }

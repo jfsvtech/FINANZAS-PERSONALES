@@ -6,6 +6,7 @@
     var puedeGastos = esAdmin || User.HasClaim("PermisoGastos", "true");
     var puedePrestamos = esAdmin || User.HasClaim("PermisoPrestamos", "true");
     var puedeInversiones = esAdmin || User.HasClaim("PermisoInversiones", "true");
+    var puedeAsistente = esAdmin || User.HasClaim("PermisoAsistente", "true");
     var puedeCalendario = esAdmin || User.HasClaim("PermisoCalendario", "true");
 }
 
@@ -53,6 +54,56 @@
             }
         </div>
     </div>
+}
+
+@if (puedeGastos)
+{
+<div class="row g-3 mb-4">
+    <div class="col-12 col-xl-4">
+        <a class="card border-0 shadow-sm h-100 text-decoration-none" asp-controller="Movimientos" asp-action="Index">
+            <div class="card-body">
+                <span class="page-eyebrow">Decision diaria</span>
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                        <h5 class="mb-1">Dinero seguro para gastar</h5>
+                        <div class="display-6 fw-bold @(Model.DineroSeguro.Valor>=0?"text-primary":"text-danger")">@Model.DineroSeguro.Valor.ToString("C0")</div>
+                    </div>
+                    <span class="home-action-icon bg-primary-subtle text-primary"><i class="bi bi-shield-check"></i></span>
+                </div>
+                <p class="text-muted small mb-0">Despues de recurrentes, tarjetas, deudas, metas y colchon. Diario: @Model.DineroSeguro.PromedioDiario.ToString("C0")</p>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-xl-3">
+        <a class="card border-0 shadow-sm h-100 text-decoration-none" asp-controller="@(puedeAsistente ? "Asistente" : "Dashboard")" asp-action="Index">
+            <div class="card-body">
+                <span class="page-eyebrow">Salud financiera</span>
+                <h5 class="mb-1">@Model.Salud.Estado</h5>
+                <div class="progress mb-2" style="height:10px"><div class="progress-bar bg-@Model.Salud.Color" style="width:@Model.Salud.Puntaje%"></div></div>
+                <strong class="text-@Model.Salud.Color">@Model.Salud.Puntaje/100</strong>
+                <p class="text-muted small mb-0">Ahorro @Model.Salud.TasaAhorro.ToString("0.#")% · cobertura @Model.Salud.CoberturaLiquidez.ToString("0.#") dias</p>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-xl-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div><span class="page-eyebrow">Radar financiero</span><h5 class="mb-0">Lo que merece atencion</h5></div>
+                    <a class="btn btn-outline-primary btn-sm" asp-controller="@(puedeAsistente ? "Asistente" : "Dashboard")" asp-action="Index">Ver todo</a>
+                </div>
+                @foreach (var item in Model.Radar.Take(2))
+                {
+                    <a class="insight-card insight-@item.Severidad text-decoration-none" asp-controller="@item.Controller" asp-action="@item.Action">
+                        <span class="alert-icon"><i class="bi @item.Icono"></i></span>
+                        <span><strong>@item.Titulo</strong><small>@item.Detalle</small></span>
+                    </a>
+                }
+                @if (!Model.Radar.Any()) { <div class="empty-state py-2"><i class="bi bi-check-circle"></i>Sin alertas relevantes por ahora.</div> }
+            </div>
+        </div>
+    </div>
+</div>
 }
 
 <div class="row g-4">

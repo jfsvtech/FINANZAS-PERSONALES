@@ -1,0 +1,76 @@
+@model CierreMensualVm
+@{
+    ViewBag.Titulo = "Cierre mensual";
+}
+
+<div class="page-heading d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <span class="page-eyebrow">Control mensual</span>
+        <h3 class="mb-1"><i class="bi bi-calendar2-check text-primary"></i> Cierre mensual</h3>
+        <p class="text-muted mb-0">Congela una foto del mes para comparar avances, salud financiera y compromisos.</p>
+    </div>
+    <form method="get" class="d-flex gap-2">
+        <input type="number" name="anio" class="form-control form-control-sm" value="@Model.Anio" min="2000" max="2100" />
+        <input type="number" name="mes" class="form-control form-control-sm" value="@Model.Mes" min="1" max="12" />
+        <button class="btn btn-outline-primary btn-sm">Ver</button>
+    </form>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-xl-8">
+        <div class="card">
+            <div class="card-header fw-bold"><i class="bi bi-lock"></i> Foto de @Model.Periodo</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6 col-lg-3"><div class="metric-tile"><span>Ingresos</span><strong class="text-success">@Model.Informe.Ingresos.ToString("C0")</strong></div></div>
+                    <div class="col-6 col-lg-3"><div class="metric-tile"><span>Gastos</span><strong class="text-danger">@Model.Informe.Gastos.ToString("C0")</strong></div></div>
+                    <div class="col-6 col-lg-3"><div class="metric-tile"><span>Dinero seguro</span><strong class="@(Model.DineroSeguro.Valor>=0?"text-primary":"text-danger")">@Model.DineroSeguro.Valor.ToString("C0")</strong></div></div>
+                    <div class="col-6 col-lg-3"><div class="metric-tile"><span>Salud</span><strong class="text-@Model.Salud.Color">@Model.Salud.Puntaje/100</strong></div></div>
+                </div>
+                <form method="post" asp-action="Guardar" class="mt-3">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="anio" value="@Model.Anio" />
+                    <input type="hidden" name="mes" value="@Model.Mes" />
+                    <label class="form-label">Notas del cierre</label>
+                    <textarea name="notas" class="form-control" rows="3" maxlength="700" placeholder="Ej: mes con pago de tarjeta alto, ingreso extraordinario, ajuste pendiente..."></textarea>
+                    <button class="btn btn-primary mt-3"><i class="bi bi-save"></i> Guardar cierre del mes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-xl-4">
+        <div class="card h-100">
+            <div class="card-header fw-bold"><i class="bi bi-heart-pulse"></i> Lectura rapida</div>
+            <div class="card-body">
+                <div class="display-6 fw-bold text-@Model.Salud.Color">@Model.Salud.Estado</div>
+                @foreach (var factor in Model.Salud.Factores)
+                {
+                    <div class="small text-muted border-bottom py-2">@factor</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header fw-bold"><i class="bi bi-clock-history"></i> Historial de cierres</div>
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead class="table-light"><tr><th>Periodo</th><th class="text-end">Ingresos</th><th class="text-end">Gastos</th><th class="text-end">Dinero seguro</th><th>Salud</th><th>Notas</th></tr></thead>
+            <tbody>
+            @foreach (var c in Model.Historial)
+            {
+                <tr>
+                    <td class="fw-bold">@c.Periodo</td>
+                    <td class="text-end text-success">@c.Ingresos.ToString("C0")</td>
+                    <td class="text-end text-danger">@c.GastosCaja.ToString("C0")</td>
+                    <td class="text-end">@c.DineroSeguro.ToString("C0")</td>
+                    <td><span class="badge text-bg-primary">@c.SaludPuntaje/100</span></td>
+                    <td class="text-muted small">@c.Notas</td>
+                </tr>
+            }
+            @if (!Model.Historial.Any()) { <tr><td colspan="6" class="text-center text-muted py-4">Aun no tienes cierres guardados.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</div>

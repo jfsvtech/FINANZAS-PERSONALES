@@ -670,6 +670,98 @@ public class InicioVm
     public decimal ValorInversiones { get; set; }
     public decimal GananciaInversiones { get; set; }
     public int RetornosProximos { get; set; }
+    public DineroSeguroVm DineroSeguro { get; set; } = new();
+    public SaludFinancieraVm Salud { get; set; } = new();
+    public List<RadarFinancieroItemVm> Radar { get; set; } = new();
+}
+
+public class DineroSeguroVm
+{
+    public decimal LiquidezActual { get; set; }
+    public decimal IngresosRecurrentesPendientes { get; set; }
+    public decimal GastosRecurrentesPendientes { get; set; }
+    public decimal PagosTarjetaEstimados { get; set; }
+    public decimal CuotasDeudaPendientes { get; set; }
+    public decimal MetasComprometidas { get; set; }
+    public decimal ColchonSeguridad { get; set; }
+    public int DiasRestantesMes { get; set; }
+    public decimal Valor => LiquidezActual + IngresosRecurrentesPendientes - GastosRecurrentesPendientes
+        - PagosTarjetaEstimados - CuotasDeudaPendientes - MetasComprometidas - ColchonSeguridad;
+    public decimal PromedioDiario => DiasRestantesMes > 0 ? Math.Round(Valor / DiasRestantesMes, 0) : Valor;
+}
+
+public class SaludFinancieraVm
+{
+    public int Puntaje { get; set; }
+    public string Estado { get; set; } = "Sin datos";
+    public string Color { get; set; } = "secondary";
+    public decimal TasaAhorro { get; set; }
+    public decimal CoberturaLiquidez { get; set; }
+    public decimal RelacionDeudaLiquidez { get; set; }
+    public int AlertasCriticas { get; set; }
+    public List<string> Factores { get; set; } = new();
+}
+
+public class RadarFinancieroItemVm
+{
+    public string Severidad { get; set; } = "info";
+    public string Icono { get; set; } = "bi-radar";
+    public string Titulo { get; set; } = "";
+    public string Detalle { get; set; } = "";
+    public string Controller { get; set; } = "Dashboard";
+    public string Action { get; set; } = "Index";
+    public string Accion { get; set; } = "Revisar";
+}
+
+public class CierreMensual
+{
+    public int Id { get; set; }
+    public int UsuarioId { get; set; }
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public decimal Ingresos { get; set; }
+    public decimal GastosCaja { get; set; }
+    public decimal DeudaTarjetas { get; set; }
+    public decimal SaldoPorCobrar { get; set; }
+    public decimal SaldoPorPagar { get; set; }
+    public decimal ValorInversiones { get; set; }
+    public decimal DineroSeguro { get; set; }
+    public int SaludPuntaje { get; set; }
+    public string Notas { get; set; } = "";
+    public DateTime CreadoEn { get; set; }
+    public string Periodo => new DateTime(Anio, Mes, 1).ToString("MMMM yyyy");
+}
+
+public class CierreMensualVm
+{
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public DineroSeguroVm DineroSeguro { get; set; } = new();
+    public SaludFinancieraVm Salud { get; set; } = new();
+    public InformeMensualVm Informe { get; set; } = new();
+    public List<CierreMensual> Historial { get; set; } = new();
+    public string Periodo => new DateTime(Anio, Mes, 1).ToString("MMMM yyyy");
+}
+
+public class ConciliacionCuenta
+{
+    public int Id { get; set; }
+    public int UsuarioId { get; set; }
+    public int CuentaId { get; set; }
+    public string CuentaNombre { get; set; } = "";
+    public string CuentaIcono { get; set; } = "bi-bank";
+    public DateTime Fecha { get; set; }
+    public decimal SaldoSistema { get; set; }
+    public decimal SaldoReal { get; set; }
+    public decimal Diferencia { get; set; }
+    public string Notas { get; set; } = "";
+    public DateTime CreadoEn { get; set; }
+}
+
+public class ConciliacionVm
+{
+    public List<Cuenta> Cuentas { get; set; } = new();
+    public List<ConciliacionCuenta> Historial { get; set; } = new();
 }
 
 public class MetasIndexVm
@@ -893,6 +985,11 @@ public class AsistenteIndexVm
 {
     public List<RecomendacionFinancieraVm> Recomendaciones { get; set; } = new();
     public List<RecordatorioVm> Recordatorios { get; set; } = new();
+    public DineroSeguroVm DineroSeguro { get; set; } = new();
+    public SaludFinancieraVm Salud { get; set; } = new();
+    public List<RadarFinancieroItemVm> Radar { get; set; } = new();
+    public string Pregunta { get; set; } = "";
+    public string Respuesta { get; set; } = "";
 }
 
 public class ConfiguracionIntegracionesVm

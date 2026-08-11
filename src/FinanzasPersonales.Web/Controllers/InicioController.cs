@@ -1,6 +1,7 @@
 using Dapper;
 using FinanzasPersonales.Web.Data;
 using FinanzasPersonales.Web.Models;
+using FinanzasPersonales.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FinanzasPersonales.Web.Controllers;
@@ -9,7 +10,12 @@ namespace FinanzasPersonales.Web.Controllers;
 public class InicioController : BaseController
 {
     private readonly Db _db;
-    public InicioController(Db db) => _db = db;
+    private readonly AsistenteFinancieroService _asistente;
+    public InicioController(Db db, AsistenteFinancieroService asistente)
+    {
+        _db = db;
+        _asistente = asistente;
+    }
 
     public IActionResult Index()
     {
@@ -162,6 +168,9 @@ public class InicioController : BaseController
             @"SELECT COUNT(*) FROM inversiones WHERE usuario_id=@usuarioId AND estado='activa'
               AND fecha_retorno BETWEEN CURRENT_DATE AND CURRENT_DATE + 60",
             new { usuarioId = UsuarioId });
+        vm.DineroSeguro = _asistente.CrearDineroSeguro(UsuarioId);
+        vm.Salud = _asistente.CalcularSaludFinanciera(UsuarioId);
+        vm.Radar = _asistente.CrearRadar(UsuarioId);
 
         return View(vm);
     }

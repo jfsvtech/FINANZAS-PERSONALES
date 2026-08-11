@@ -303,12 +303,13 @@ public class AccesoController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CambiarPreferencias(string idioma, string monedaCodigo,
-        bool recordatoriosEmailActivos = false, int recordatoriosEmailDiasAntes = 3, string? returnUrl = null)
+        bool recordatoriosEmailActivos = false, int recordatoriosEmailDiasAntes = 3, decimal colchonSeguridad = 0, string? returnUrl = null)
     {
         var usuarioId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         idioma = PreferenciasUsuarioService.NormalizarIdioma(idioma);
         monedaCodigo = PreferenciasUsuarioService.NormalizarMoneda(monedaCodigo);
         recordatoriosEmailDiasAntes = Math.Clamp(recordatoriosEmailDiasAntes, 0, 60);
+        colchonSeguridad = Math.Max(0, colchonSeguridad);
 
         using var con = _db.Abrir();
         con.Execute(
@@ -317,21 +318,23 @@ public class AccesoController : Controller
             new { usuarioId, idioma, monedaCodigo });
         con.Execute(
             @"INSERT INTO configuraciones_usuario
-                (usuario_id, incluir_saldo_anterior, recordatorios_email_activos, recordatorios_email_dias_antes)
-              VALUES (@usuarioId, FALSE, @recordatoriosEmailActivos, @recordatoriosEmailDiasAntes)
+                (usuario_id, incluir_saldo_anterior, recordatorios_email_activos, recordatorios_email_dias_antes, colchon_seguridad)
+              VALUES (@usuarioId, FALSE, @recordatoriosEmailActivos, @recordatoriosEmailDiasAntes, @colchonSeguridad)
               ON CONFLICT (usuario_id) DO UPDATE
               SET recordatorios_email_activos=@recordatoriosEmailActivos,
-                  recordatorios_email_dias_antes=@recordatoriosEmailDiasAntes",
-            new { usuarioId, recordatoriosEmailActivos, recordatoriosEmailDiasAntes });
+                  recordatorios_email_dias_antes=@recordatoriosEmailDiasAntes,
+                  colchon_seguridad=@colchonSeguridad",
+            new { usuarioId, recordatoriosEmailActivos, recordatoriosEmailDiasAntes, colchonSeguridad });
 
         var claims = User.Claims
-            .Where(x => x.Type is not ("Idioma" or "MonedaCodigo" or "RecordatoriosEmailActivos" or "RecordatoriosEmailDiasAntes"))
+            .Where(x => x.Type is not ("Idioma" or "MonedaCodigo" or "RecordatoriosEmailActivos" or "RecordatoriosEmailDiasAntes" or "ColchonSeguridad"))
             .Select(x => new Claim(x.Type, x.Value))
             .ToList();
         claims.Add(new Claim("Idioma", idioma));
         claims.Add(new Claim("MonedaCodigo", monedaCodigo));
         claims.Add(new Claim("RecordatoriosEmailActivos", recordatoriosEmailActivos ? "true" : "false"));
         claims.Add(new Claim("RecordatoriosEmailDiasAntes", recordatoriosEmailDiasAntes.ToString()));
+        claims.Add(new Claim("ColchonSeguridad", colchonSeguridad.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
         var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(new ClaimsPrincipal(identidad),
@@ -399,6 +402,7 @@ public class AccesoController : Controller
             @"UPDATE usuarios SET intentos_fallidos=0, bloqueado_hasta=NULL, ultimo_acceso=NOW()
               WHERE id=@id", new { u.Id });
         var recordatorios = ObtenerPreferenciasRecordatorios(con, u.Id);
+        var colchonSeguridad = con.ExecuteScalar<decimal?>("SELECT colchon_seguridad FROM configuraciones_usuario WHERE usuario_id=@usuarioId", new { usuarioId = u.Id }) ?? 0;
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, u.Id.ToString()),
@@ -415,6 +419,7 @@ public class AccesoController : Controller
             new("MonedaCodigo", PreferenciasUsuarioService.NormalizarMoneda(u.MonedaCodigo)),
             new("RecordatoriosEmailActivos", recordatorios.Activos ? "true" : "false"),
             new("RecordatoriosEmailDiasAntes", recordatorios.DiasAntes.ToString()),
+            new("ColchonSeguridad", colchonSeguridad.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             new("OnboardingCompletado", u.EsAdmin || u.OnboardingCompletado ? "true" : "false")
         };
         var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);

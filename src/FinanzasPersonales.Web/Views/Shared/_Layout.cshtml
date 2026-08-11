@@ -1,6 +1,6 @@
 @{
     var controladorActual = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
-    var esGastos = controladorActual is "Dashboard" or "Movimientos" or "Importar" or "Periodicos" or "Presupuestos";
+    var esGastos = controladorActual is "Dashboard" or "Movimientos" or "Importar" or "Periodicos" or "Presupuestos" or "Cierres" or "Conciliaciones";
     var esPrestamos = controladorActual is "Prestamos" or "Personas" or "Deudas";
     var esInversiones = controladorActual is "Inversiones" or "TiposInversion";
     var autenticado = User.Identity?.IsAuthenticated == true;
@@ -16,6 +16,7 @@
     var monedaActual = User.FindFirst("MonedaCodigo")?.Value ?? "COP";
     var recordatoriosEmailActivos = (User.FindFirst("RecordatoriosEmailActivos")?.Value ?? "true") == "true";
     var recordatoriosEmailDias = int.TryParse(User.FindFirst("RecordatoriosEmailDiasAntes")?.Value, out var diasRecordatorio) ? Math.Clamp(diasRecordatorio, 0, 60) : 3;
+    var colchonSeguridad = decimal.TryParse(User.FindFirst("ColchonSeguridad")?.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var colchonClaim) ? Math.Max(0, colchonClaim) : 0;
     var returnUrl = Context.Request.Path + Context.Request.QueryString;
 }
 <!DOCTYPE html>
@@ -68,6 +69,8 @@
                     <a class="@(controladorActual == "Metas" ? "active premium-link" : "premium-link")" asp-controller="Metas" asp-action="Index"><i class="bi bi-flag"></i><span>Metas de ahorro</span></a>
                     <a class="@(controladorActual == "Periodicos" ? "active" : "")" asp-controller="Periodicos" asp-action="Index"><i class="bi bi-arrow-repeat"></i><span>Recurrentes</span></a>
                     <a class="@(controladorActual == "Presupuestos" ? "active" : "")" asp-controller="Presupuestos" asp-action="Index"><i class="bi bi-bullseye"></i><span>Presupuestos</span></a>
+                    <a class="@(controladorActual == "Cierres" ? "active premium-link" : "premium-link")" asp-controller="Cierres" asp-action="Index"><i class="bi bi-calendar2-check"></i><span>Cierre mensual</span></a>
+                    <a class="@(controladorActual == "Conciliaciones" ? "active premium-link" : "premium-link")" asp-controller="Conciliaciones" asp-action="Index"><i class="bi bi-check2-square"></i><span>Conciliacion</span></a>
                     <a class="@(controladorActual == "Importar" ? "active" : "")" asp-controller="Importar" asp-action="Index"><i class="bi bi-upload"></i><span>Importar</span></a>
                     <a class="@(controladorActual == "Cuentas" ? "active" : "")" asp-controller="Cuentas" asp-action="Index"><i class="bi bi-bank"></i><span>Cuentas</span></a>
                     <a class="@(controladorActual == "Categorias" ? "active" : "")" asp-controller="Categorias" asp-action="Index"><i class="bi bi-tags"></i><span>Categorias</span></a>
@@ -150,7 +153,7 @@
             @if (puedeCalendario) { <a asp-controller="Calendario" asp-action="Index"><i class="bi bi-calendar3"></i> Calendario financiero</a> }
             @if (puedeGastos)
             {
-                <div class="sidebar-group"><button class="sidebar-group-toggle" type="button"><i class="bi bi-wallet2"></i><span>Gestion de Finanzas</span><i class="bi bi-chevron-down group-chevron"></i></button><div class="sidebar-group-items"><a asp-controller="Dashboard" asp-action="Index"><i class="bi bi-bar-chart-line"></i> Analisis financiero</a>@if (puedeAsistente) { <a asp-controller="Asistente" asp-action="Registro"><i class="bi bi-mic"></i> Registro rapido</a> }<a asp-controller="Movimientos" asp-action="Index"><i class="bi bi-arrow-left-right"></i> Movimientos</a><a asp-controller="Metas" asp-action="Index"><i class="bi bi-flag"></i> Metas de ahorro</a><a asp-controller="Periodicos" asp-action="Index"><i class="bi bi-arrow-repeat"></i> Recurrentes</a><a asp-controller="Presupuestos" asp-action="Index"><i class="bi bi-bullseye"></i> Presupuestos</a><a asp-controller="Cuentas" asp-action="Index"><i class="bi bi-bank"></i> Cuentas</a><a asp-controller="Categorias" asp-action="Index"><i class="bi bi-tags"></i> Categorias</a></div></div>
+                <div class="sidebar-group"><button class="sidebar-group-toggle" type="button"><i class="bi bi-wallet2"></i><span>Gestion de Finanzas</span><i class="bi bi-chevron-down group-chevron"></i></button><div class="sidebar-group-items"><a asp-controller="Dashboard" asp-action="Index"><i class="bi bi-bar-chart-line"></i> Analisis financiero</a>@if (puedeAsistente) { <a asp-controller="Asistente" asp-action="Registro"><i class="bi bi-mic"></i> Registro rapido</a> }<a asp-controller="Movimientos" asp-action="Index"><i class="bi bi-arrow-left-right"></i> Movimientos</a><a asp-controller="Metas" asp-action="Index"><i class="bi bi-flag"></i> Metas de ahorro</a><a asp-controller="Periodicos" asp-action="Index"><i class="bi bi-arrow-repeat"></i> Recurrentes</a><a asp-controller="Presupuestos" asp-action="Index"><i class="bi bi-bullseye"></i> Presupuestos</a><a asp-controller="Cierres" asp-action="Index"><i class="bi bi-calendar2-check"></i> Cierre mensual</a><a asp-controller="Conciliaciones" asp-action="Index"><i class="bi bi-check2-square"></i> Conciliacion</a><a asp-controller="Cuentas" asp-action="Index"><i class="bi bi-bank"></i> Cuentas</a><a asp-controller="Categorias" asp-action="Index"><i class="bi bi-tags"></i> Categorias</a></div></div>
             }
             @if (puedePrestamos)
             {
@@ -201,6 +204,12 @@
                     <div class="mb-0">
                         <label class="form-label">Dias antes para avisarme</label>
                         <input name="recordatoriosEmailDiasAntes" type="number" min="0" max="60" class="form-control" value="@recordatoriosEmailDias" />
+                    </div>
+                    <hr />
+                    <div class="mb-0">
+                        <label class="form-label">Colchon de seguridad</label>
+                        <input name="colchonSeguridad" class="form-control" value="@colchonSeguridad.ToString("N0")" />
+                        <div class="form-text">Este valor se protege en el calculo de dinero seguro para gastar.</div>
                     </div>
                 </div>
                 <div class="modal-footer">

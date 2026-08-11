@@ -408,6 +408,7 @@ using (var scope = app.Services.CreateScope())
               )");
         con.Execute("ALTER TABLE configuraciones_usuario ADD COLUMN IF NOT EXISTS recordatorios_email_activos BOOLEAN NOT NULL DEFAULT TRUE");
         con.Execute("ALTER TABLE configuraciones_usuario ADD COLUMN IF NOT EXISTS recordatorios_email_dias_antes INT NOT NULL DEFAULT 3");
+        con.Execute("ALTER TABLE configuraciones_usuario ADD COLUMN IF NOT EXISTS colchon_seguridad NUMERIC(16,2) NOT NULL DEFAULT 0");
         con.Execute(
             @"DO $$
               BEGIN
@@ -454,6 +455,37 @@ using (var scope = app.Services.CreateScope())
                   monto NUMERIC(14,2) NOT NULL CHECK (monto > 0),
                   notas VARCHAR(200) NULL
               )");
+        con.Execute(
+            @"CREATE TABLE IF NOT EXISTS cierres_mensuales (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                  anio INT NOT NULL,
+                  mes INT NOT NULL CHECK (mes BETWEEN 1 AND 12),
+                  ingresos NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  gastos_caja NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  deuda_tarjetas NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  saldo_por_cobrar NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  saldo_por_pagar NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  valor_inversiones NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  dinero_seguro NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  salud_puntaje INT NOT NULL DEFAULT 0,
+                  notas VARCHAR(700) NOT NULL DEFAULT '',
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW(),
+                  UNIQUE(usuario_id, anio, mes)
+              );
+              CREATE TABLE IF NOT EXISTS conciliaciones_cuenta (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                  cuenta_id INT NOT NULL REFERENCES cuentas(id) ON DELETE CASCADE,
+                  fecha DATE NOT NULL,
+                  saldo_sistema NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  saldo_real NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  diferencia NUMERIC(16,2) NOT NULL DEFAULT 0,
+                  notas VARCHAR(400) NOT NULL DEFAULT '',
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+              );
+              CREATE INDEX IF NOT EXISTS idx_cierres_usuario_periodo ON cierres_mensuales (usuario_id, anio DESC, mes DESC);
+              CREATE INDEX IF NOT EXISTS idx_conciliaciones_usuario_cuenta_fecha ON conciliaciones_cuenta (usuario_id, cuenta_id, fecha DESC)");
         con.Execute(
             @"CREATE TABLE IF NOT EXISTS tipos_inversion (
                   id SERIAL PRIMARY KEY,
