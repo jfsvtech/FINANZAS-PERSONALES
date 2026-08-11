@@ -174,17 +174,21 @@ public class AsistenteFinancieroService
             radar.Add(new() { Severidad = "success", Icono = "bi-shield-check", Titulo = "Caja controlada", Detalle = $"Puedes gastar cerca de {dineroSeguro.PromedioDiario:C0} diarios sin afectar compromisos.", Controller = "Movimientos", Accion = "Ver movimientos" });
 
         var categoriaSpike = con.QueryFirstOrDefault<(string Nombre, string Icono, decimal Actual, decimal Anterior)>(
-            @"SELECT c.nombre,c.icono,
-                     COALESCE(SUM(m.monto) FILTER (WHERE m.fecha>=@desde AND m.fecha<@hasta),0) AS Actual,
-                     COALESCE(SUM(m.monto) FILTER (WHERE m.fecha>=@anterior AND m.fecha<@desde),0) AS Anterior
-              FROM categorias c
-              LEFT JOIN movimientos m ON m.categoria_id=c.id AND m.usuario_id=@usuarioId AND m.tipo='gasto'
-                   AND m.fecha>=@anterior AND m.fecha<@hasta
-              WHERE c.usuario_id=@usuarioId AND c.tipo='gasto'
-              GROUP BY c.id,c.nombre,c.icono
-              HAVING COALESCE(SUM(m.monto) FILTER (WHERE m.fecha>=@desde AND m.fecha<@hasta),0) >
-                     GREATEST(50000, COALESCE(SUM(m.monto) FILTER (WHERE m.fecha>=@anterior AND m.fecha<@desde),0) * 1.35)
-              ORDER BY Actual - Anterior DESC LIMIT 1",
+            @"WITH categoria_variacion AS (
+                  SELECT c.nombre,c.icono,
+                         COALESCE(SUM(m.monto) FILTER (WHERE m.fecha>=@desde AND m.fecha<@hasta),0) AS actual,
+                         COALESCE(SUM(m.monto) FILTER (WHERE m.fecha>=@anterior AND m.fecha<@desde),0) AS anterior
+                  FROM categorias c
+                  LEFT JOIN movimientos m ON m.categoria_id=c.id AND m.usuario_id=@usuarioId AND m.tipo='gasto'
+                       AND m.fecha>=@anterior AND m.fecha<@hasta
+                  WHERE c.usuario_id=@usuarioId AND c.tipo='gasto'
+                  GROUP BY c.id,c.nombre,c.icono
+              )
+              SELECT nombre AS Nombre, icono AS Icono, actual AS Actual, anterior AS Anterior
+              FROM categoria_variacion
+              WHERE actual > GREATEST(50000, anterior * 1.35)
+              ORDER BY actual - anterior DESC
+              LIMIT 1",
             new { usuarioId, desde, hasta, anterior });
         if (!string.IsNullOrWhiteSpace(categoriaSpike.Nombre))
             radar.Add(new() { Severidad = "warning", Icono = categoriaSpike.Icono, Titulo = $"Subida inusual en {categoriaSpike.Nombre}", Detalle = $"Va en {categoriaSpike.Actual:C0}; el periodo anterior fue {categoriaSpike.Anterior:C0}.", Controller = "Movimientos", Accion = "Filtrar categoria" });
