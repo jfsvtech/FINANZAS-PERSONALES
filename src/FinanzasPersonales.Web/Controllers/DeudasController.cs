@@ -304,6 +304,40 @@ public class DeudasController : BaseController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public IActionResult RegistrarCuotaAutomatica(int deudaId, DateTime? fecha = null, string? returnUrl = null)
+    {
+        using var con = _db.Abrir();
+        var deuda = ConsultarDeudas(con, id: deudaId).FirstOrDefault();
+        if (deuda == null) return NotFound();
+        var resultado = RegistrarCuotaProgramada(con, deuda, fecha?.Date ?? (deuda.ProximaFechaPago?.Date ?? DateTime.Today));
+        TempData[resultado.Ok ? "Ok" : "Error"] = resultado.Mensaje;
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
+        return RedirectToAction("Detalle", new { id = deudaId });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult ProcesarCuotasVencidas(string? returnUrl = null)
+    {
+        using var con = _db.Abrir();
+        var deudas = ConsultarDeudas(con).Where(x => (x.Estado is "activa" or "vencida") && x.ProximaFechaPago.HasValue && x.ProximaFechaPago.Value.Date <= DateTime.Today).ToList();
+        var ok = 0;
+        var errores = new List<string>();
+        foreach (var deuda in deudas)
+        {
+            var resultado = RegistrarCuotaProgramada(con, deuda, deuda.ProximaFechaPago!.Value.Date);
+            if (resultado.Ok) ok++;
+            else errores.Add($"{deuda.Acreedor}: {resultado.Mensaje}");
+        }
+        TempData[errores.Any() ? "Error" : "Ok"] = errores.Any()
+            ? $"Se registraron {ok} cuota(s). Pendientes: {string.Join(" | ", errores.Take(3))}"
+            : $"Se registraron {ok} cuota(s) vencida(s).";
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
+        return RedirectToAction("Index", "Periodicos");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public IActionResult EliminarPago(int id, int deudaId)
     {
         using var con = _db.Abrir();
@@ -378,6 +412,88 @@ public class DeudasController : BaseController
                   ELSE 'activa' END
               WHERE d.id=@deudaId AND d.usuario_id=@UsuarioId",
             new { deudaId, UsuarioId });
+    }
+
+    private (bool Ok, string Mensaje) RegistrarCuotaProgramada(System.Data.IDbConnection con, Deuda deuda, DateTime fecha)
+    {
+        if (deuda.Estado == "pagada") return (false, "La deuda ya esta pagada.");
+        var pagos = ConsultarPagos(con, deuda.Id);
+        CalculoDeudas.CompletarCalculos(deuda, pagos);
+        if (deuda.SaldoCapital <= 0) return (false, "No hay saldo de capital pendiente.");
+        if (deuda.CuentaPagoId.HasValue && !CuentaEsMia(con, deuda.CuentaPagoId.Value)) return (false, "La cuenta de pago no es valida.");
+
+        var yaExiste = con.ExecuteScalar<int>(
+            @"SELECT COUNT(*) FROM deuda_pagos
+              WHERE usuario_id=@UsuarioId AND deuda_id=@deudaId AND fecha=@fecha
+                AND notas LIKE 'Cuota programada automatica%'",
+            new { UsuarioId, deudaId = deuda.Id, fecha }) > 0;
+        if (yaExiste) return (false, "La cuota programada de esa fecha ya fue registrada.");
+
+        var monto = deuda.CuotaEstimada.GetValueOrDefault();
+        if (monto <= 0 && deuda.SistemaPago == "sin_interes" && deuda.PlazoMeses > 0)
+            monto = Math.Round(deuda.CapitalInicial / deuda.PlazoMeses, 2);
+        if (monto <= 0 && deuda.SistemaPago == "solo_intereses")
+            monto = deuda.InteresMensualEstimado;
+        if (monto <= 0)
+            return (false, "Configura cuota estimada o plazo para poder registrar la cuota normal.");
+
+        var interes = deuda.SistemaPago switch
+        {
+            "sin_interes" => 0,
+            "solo_intereses" => Math.Min(monto, deuda.InteresMensualEstimado),
+            _ => Math.Min(monto, deuda.InteresMensualEstimado)
+        };
+        var capital = deuda.SistemaPago == "solo_intereses" ? 0 : Math.Min(deuda.SaldoCapital, Math.Max(0, monto - interes));
+        var costos = Math.Max(0, monto - interes - capital);
+        if (capital + interes + costos <= 0) return (false, "La cuota no pudo distribuirse entre capital e interes.");
+
+        var pagoId = con.ExecuteScalar<int>(
+            @"INSERT INTO deuda_pagos(usuario_id,deuda_id,fecha,monto_total,capital,interes,costos,monto_original,
+                       moneda_codigo,tasa_conversion,moneda_base_codigo,cuenta_pago_id,efecto_abono,es_extraordinario,notas)
+              VALUES(@UsuarioId,@deudaId,@fecha,@monto,@capital,@interes,@costos,@monto,
+                       @monedaCodigo,1,@monedaBase,@cuentaPagoId,'no_aplica',FALSE,@notas)
+              RETURNING id",
+            new
+            {
+                UsuarioId,
+                deudaId = deuda.Id,
+                fecha,
+                monto,
+                capital,
+                interes,
+                costos,
+                monedaCodigo = deuda.MonedaBaseCodigo,
+                monedaBase = deuda.MonedaBaseCodigo,
+                deuda.CuentaPagoId,
+                notas = $"Cuota programada automatica {fecha:yyyy-MM-dd}"
+            });
+
+        if (deuda.CuentaPagoId.HasValue)
+        {
+            con.Execute(
+                @"INSERT INTO movimientos(usuario_id,fecha,tipo,cuenta_id,categoria_id,descripcion,monto,monto_original,moneda_codigo,tasa_conversion,moneda_base_codigo)
+                  VALUES(@UsuarioId,@fecha,'gasto',@cuentaId,NULL,@descripcion,@monto,@monto,@moneda,1,@moneda)",
+                new
+                {
+                    UsuarioId,
+                    fecha,
+                    cuentaId = deuda.CuentaPagoId.Value,
+                    descripcion = $"Pago deuda: {deuda.Acreedor}",
+                    monto,
+                    moneda = deuda.MonedaBaseCodigo
+                });
+        }
+
+        var siguienteFecha = deuda.ProximaFechaPago.HasValue
+            ? deuda.ProximaFechaPago.Value.Date.AddMonths(1)
+            : fecha.AddMonths(1);
+        con.Execute(
+            @"UPDATE deudas SET proxima_fecha_pago=@siguienteFecha
+              WHERE id=@deudaId AND usuario_id=@UsuarioId",
+            new { siguienteFecha, deudaId = deuda.Id, UsuarioId });
+        ActualizarEstado(con, deuda.Id);
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Registrar cuota programada", "deuda_pagos", pagoId, $"Cuota automatica de {deuda.Acreedor} por {monto:N0}.");
+        return (true, $"Cuota programada de {deuda.Acreedor} registrada por {monto:C0}.");
     }
 
     private List<Cuenta> CuentasActivas(System.Data.IDbConnection con) =>

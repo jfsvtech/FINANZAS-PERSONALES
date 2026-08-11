@@ -4,6 +4,7 @@
     var categoriasGasto = (List<Categoria>)ViewBag.CategoriasGasto;
     var categoriasIngreso = (List<Categoria>)ViewBag.CategoriasIngreso;
     var cuentas = (List<Cuenta>)ViewBag.Cuentas;
+    var deudasProgramadas = (List<Deuda>)ViewBag.DeudasProgramadas;
     var hoy = DateTime.Today;
 }
 
@@ -14,6 +15,15 @@
 
 <p class="text-muted small">Gastos e ingresos que se repiten cada cierto tiempo: arriendos recibidos, nomina, seguros, impuestos, matriculas...
 Cuando llegue la fecha, usa <strong>Registrar</strong>: se crea el movimiento real y la proxima fecha se reprograma sola.</p>
+
+@if (deudasProgramadas.Any(x => x.ProximaFechaPago <= hoy))
+{
+    <form method="post" asp-controller="Deudas" asp-action="ProcesarCuotasVencidas" class="mb-3">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
+        <button class="btn btn-warning btn-sm"><i class="bi bi-lightning-charge"></i> Registrar todas las cuotas de deuda vencidas</button>
+    </form>
+}
 
 <div class="card border-0 shadow-sm">
     <div class="table-responsive">
@@ -61,6 +71,47 @@ Cuando llegue la fecha, usa <strong>Registrar</strong>: se crea el movimiento re
             @if (!Model.Any())
             {
                 <tr><td colspan="6" class="text-center text-muted py-4">No tienes movimientos recurrentes configurados.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-3">
+    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-building-lock"></i> Obligaciones por pagar</span>
+        <a class="btn btn-outline-primary btn-sm" asp-controller="Deudas" asp-action="Estrategia"><i class="bi bi-signpost-split"></i> Analizar deudas</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>Acreedor</th><th>Proxima fecha</th><th class="text-end">Cuota</th><th class="text-end">Saldo</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var d in deudasProgramadas)
+            {
+                var vencido = d.ProximaFechaPago <= hoy;
+                <tr class="@(vencido ? "table-warning" : "")">
+                    <td>
+                        <strong>@d.Acreedor</strong>
+                        <small class="d-block text-muted">@d.TipoTexto &middot; @d.SistemaPagoTexto</small>
+                    </td>
+                    <td>@(d.ProximaFechaPago?.ToString("dd MMM yyyy") ?? "Sin fecha") @if(vencido){<span class="badge text-bg-warning">Pendiente</span>}</td>
+                    <td class="text-end fw-bold">@((d.CuotaEstimada ?? d.InteresMensualEstimado).ToString("C0"))</td>
+                    <td class="text-end text-danger fw-bold">@d.SaldoCapital.ToString("C0")</td>
+                    <td class="text-end text-nowrap">
+                        <form method="post" asp-controller="Deudas" asp-action="RegistrarCuotaAutomatica" class="d-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="deudaId" value="@d.Id" />
+                            <input type="hidden" name="fecha" value="@((d.ProximaFechaPago ?? hoy).ToString("yyyy-MM-dd"))" />
+                            <input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
+                            <button class="btn btn-sm btn-primary"><i class="bi bi-check2-circle"></i> Registrar cuota</button>
+                        </form>
+                        <a class="btn btn-sm btn-outline-secondary" asp-controller="Deudas" asp-action="Detalle" asp-route-id="@d.Id"><i class="bi bi-clipboard-data"></i></a>
+                    </td>
+                </tr>
+            }
+            @if (!deudasProgramadas.Any())
+            {
+                <tr><td colspan="5" class="text-center text-muted py-4">No tienes obligaciones de deuda programadas.</td></tr>
             }
             </tbody>
         </table>

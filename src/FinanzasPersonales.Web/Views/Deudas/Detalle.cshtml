@@ -9,6 +9,15 @@
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><a asp-action="Index" class="text-decoration-none"><i class="bi bi-arrow-left"></i></a> <i class="bi bi-building-lock"></i> Deuda: @d.Acreedor <span class="badge @(d.Estado=="pagada"?"text-bg-success":d.Estado=="vencida"?"text-bg-warning":"text-bg-primary")">@d.Estado</span></h4>
     <div class="d-flex gap-2">
+        @if (d.Estado != "pagada")
+        {
+            <form method="post" asp-action="RegistrarCuotaAutomatica" class="d-inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="deudaId" value="@d.Id" />
+                <input type="hidden" name="fecha" value="@((d.ProximaFechaPago ?? DateTime.Today).ToString("yyyy-MM-dd"))" />
+                <button class="btn btn-primary btn-sm"><i class="bi bi-check2-circle"></i> Registrar cuota programada</button>
+            </form>
+        }
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEditar"><i class="bi bi-pencil"></i> Editar</button>
         <form method="post" asp-action="Eliminar" onsubmit="return confirm('Eliminar esta deuda y todo su historial?');">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@d.Id" /><button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Eliminar</button></form>
     </div>
@@ -99,7 +108,7 @@ else if (d.RequiereDatosParaAmortizar)
 <div class="row g-3">
     <div class="col-12 col-lg-4">
         <div class="card border-0 shadow-sm">
-            <div class="card-header fw-bold"><i class="bi bi-cash-coin"></i> Registrar pago</div>
+            <div class="card-header fw-bold"><i class="bi bi-cash-coin"></i> Ajuste manual / abono extra</div>
             <form class="card-body" method="post" asp-action="RegistrarPago" id="formPagoDeuda">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="deudaId" value="@d.Id" />
@@ -135,8 +144,8 @@ else if (d.RequiereDatosParaAmortizar)
                 </div>
                 <div class="mb-3"><label class="form-label">Cuenta de pago</label><select name="cuentaPagoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){if(c.Id==d.CuentaPagoId){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select></div>
                 <div class="mb-3"><label class="form-label">Notas</label><input name="notas" class="form-control" maxlength="300" /></div>
-                <button class="btn btn-primary w-100" @(d.Estado=="pagada"?"disabled":"")><i class="bi bi-check-lg"></i> Registrar pago</button>
-                <div class="form-text mt-2">Sugerido: interes mensual @M(d.InteresMensualEstimado, Model.MonedaBase). Si esta deuda es antigua, el saldo ya puede incluir amortizacion estimada.</div>
+                <button class="btn btn-primary w-100" @(d.Estado=="pagada"?"disabled":"")><i class="bi bi-check-lg"></i> Registrar ajuste</button>
+                <div class="form-text mt-2">Usa este formulario para abonos extraordinarios, costos, intereses no habituales o correcciones. La cuota normal se registra con el boton superior.</div>
             </form>
         </div>
     </div>

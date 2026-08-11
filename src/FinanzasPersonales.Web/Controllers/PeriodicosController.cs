@@ -33,6 +33,22 @@ public class PeriodicosController : BaseController
         ViewBag.Cuentas = con.Query<Cuenta>(
             @"SELECT id, nombre, tipo FROM cuentas WHERE usuario_id=@UsuarioId AND activo ORDER BY tipo, nombre",
             new { UsuarioId }).ToList();
+        var deudas = con.Query<Deuda>(
+            @"SELECT id,usuario_id AS UsuarioId,acreedor,tipo,fecha_desembolso AS FechaDesembolso,
+                     capital_inicial AS CapitalInicial,tasa,periodo_tasa AS PeriodoTasa,
+                     sistema_pago AS SistemaPago,plazo_meses AS PlazoMeses,dia_pago AS DiaPago,
+                     proxima_fecha_pago AS ProximaFechaPago,cuota_estimada AS CuotaEstimada,
+                     saldo_actual_informado AS SaldoActualInformado,fecha_saldo_actual AS FechaSaldoActual,
+                     cuenta_pago_id AS CuentaPagoId,estado
+              FROM deudas
+              WHERE usuario_id=@UsuarioId AND estado IN ('activa','vencida') AND proxima_fecha_pago IS NOT NULL
+              ORDER BY proxima_fecha_pago", new { UsuarioId }).ToList();
+        var pagosDeuda = con.Query<DeudaPago>(
+            @"SELECT deuda_id AS DeudaId,fecha,capital,interes,costos,monto_total AS MontoTotal
+              FROM deuda_pagos WHERE usuario_id=@UsuarioId",
+            new { UsuarioId }).ToLookup(x => x.DeudaId);
+        foreach (var deuda in deudas) CalculoDeudas.CompletarCalculos(deuda, pagosDeuda[deuda.Id]);
+        ViewBag.DeudasProgramadas = deudas;
 
         return View(lista);
     }

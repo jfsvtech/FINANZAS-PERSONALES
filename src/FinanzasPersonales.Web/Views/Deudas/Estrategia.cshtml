@@ -33,6 +33,32 @@
     </div>
 </form>
 
+@{
+    var recomendada = Model.Deudas.OrderBy(x => Model.Metodo == "bola_nieve" ? x.OrdenBolaNieve : x.OrdenAvalancha).FirstOrDefault();
+}
+@if (recomendada != null)
+{
+    <div class="alert alert-primary border-0 shadow-sm">
+        <div class="d-flex gap-3 align-items-start">
+            <span class="home-action-icon bg-primary-subtle text-primary"><i class="bi bi-bullseye"></i></span>
+            <div>
+                <strong>Ataca primero: @recomendada.Acreedor</strong>
+                <div class="small">
+                    @if (Model.Metodo == "bola_nieve")
+                    {
+                        <span>Es la mejor primera candidata por bola de nieve porque tiene uno de los saldos mas bajos. Liberarla rapido reduce una obligacion mensual y da traccion psicologica.</span>
+                    }
+                    else
+                    {
+                        <span>Es la mejor primera candidata por avalancha porque tiene la tasa mensual mas costosa. Cada abono extra ahi suele ahorrar mas intereses que repartirlo entre todas.</span>
+                    }
+                    <span> Saldo: <strong>@recomendada.SaldoCapital.ToString("C0")</strong>. Tasa mensual: <strong>@recomendada.TasaMensual.ToString("0.##")%</strong>.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <div class="row g-2 mb-3 text-center">
     <div class="col-6 col-md-3"><div class="mini-stat mini-stat-danger"><span>Saldo total</span><strong>@Model.SaldoTotal.ToString("C0")</strong></div></div>
     <div class="col-6 col-md-3"><div class="mini-stat"><span>Cuotas base</span><strong>@Model.CuotasBase.ToString("C0")</strong></div></div>
