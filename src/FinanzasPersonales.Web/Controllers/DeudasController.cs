@@ -337,10 +337,7 @@ public class DeudasController : BaseController
 
     private static void CompletarCalculos(Deuda deuda, IEnumerable<DeudaPago> pagos)
     {
-        deuda.CapitalPagado = pagos.Sum(x => x.Capital);
-        deuda.InteresPagado = pagos.Sum(x => x.Interes);
-        deuda.CostosPagados = pagos.Sum(x => x.Costos);
-        deuda.TotalPagado = pagos.Sum(x => x.MontoTotal);
+        CalculoDeudas.CompletarCalculos(deuda, pagos);
     }
 
     private void ActualizarEstado(System.Data.IDbConnection con, int deudaId)

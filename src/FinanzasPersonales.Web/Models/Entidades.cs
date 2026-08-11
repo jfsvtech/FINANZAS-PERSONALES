@@ -494,11 +494,16 @@ public class Deuda
     public string? CuentaDesembolsoNombre { get; set; }
     public string? CuentaPagoNombre { get; set; }
     public decimal CapitalPagado { get; set; }
+    public decimal CapitalPagadoEstimado { get; set; }
+    public int CuotasEstimadasTranscurridas { get; set; }
     public decimal InteresPagado { get; set; }
     public decimal CostosPagados { get; set; }
     public decimal TotalPagado { get; set; }
-    public decimal SaldoCapital => Math.Max(0, CapitalInicial - CapitalPagado);
-    public decimal Avance => CapitalInicial > 0 ? Math.Round(CapitalPagado * 100 / CapitalInicial, 1) : 0;
+    public decimal CapitalReconocido => Math.Max(CapitalPagado, CapitalPagadoEstimado);
+    public decimal SaldoCapitalRealPorPagos => Math.Max(0, CapitalInicial - CapitalPagado);
+    public decimal SaldoCapital => Math.Max(0, CapitalInicial - CapitalReconocido);
+    public bool UsaAmortizacionEstimada => CapitalPagadoEstimado > CapitalPagado;
+    public decimal Avance => CapitalInicial > 0 ? Math.Round(CapitalReconocido * 100 / CapitalInicial, 1) : 0;
     public decimal TasaMensualEquivalente => PeriodoTasa == "anual"
         ? (decimal)(Math.Pow(1d + (double)Tasa / 100d, 1d / 12d) - 1d) * 100m
         : Tasa;
@@ -1295,6 +1300,84 @@ public static class CalculoInversiones
         var meses = Math.Max(0, (hasta.Date - desde.Date).TotalDays / 30d);
         var tasaMensual = (double)TasaMensual(tasa, periodo) / 100d;
         return Math.Round(capital * (decimal)Math.Pow(1d + tasaMensual, meses), 0);
+    }
+}
+
+public static class CalculoDeudas
+{
+    public static void CompletarCalculos(Deuda deuda, IEnumerable<DeudaPago> pagos)
+    {
+        deuda.CapitalPagado = pagos.Sum(x => x.Capital);
+        deuda.InteresPagado = pagos.Sum(x => x.Interes);
+        deuda.CostosPagados = pagos.Sum(x => x.Costos);
+        deuda.TotalPagado = pagos.Sum(x => x.MontoTotal);
+        CompletarAmortizacionEstimada(deuda);
+    }
+
+    private static void CompletarAmortizacionEstimada(Deuda deuda)
+    {
+        deuda.CapitalPagadoEstimado = 0;
+        deuda.CuotasEstimadasTranscurridas = 0;
+        if (deuda.Estado == "pagada" || deuda.CapitalInicial <= 0 || deuda.FechaDesembolso.Date >= DateTime.Today)
+            return;
+        if (deuda.SistemaPago is "solo_intereses" or "abonos_libres")
+            return;
+
+        var cuotasTranscurridas = CalcularCuotasTranscurridas(deuda);
+        if (cuotasTranscurridas <= 0) return;
+        deuda.CuotasEstimadasTranscurridas = cuotasTranscurridas;
+
+        if (deuda.SistemaPago == "sin_interes")
+        {
+            var cuotaCapital = deuda.CuotaEstimada.GetValueOrDefault();
+            if (cuotaCapital <= 0 && deuda.PlazoMeses > 0)
+                cuotaCapital = deuda.CapitalInicial / deuda.PlazoMeses;
+            deuda.CapitalPagadoEstimado = Math.Min(deuda.CapitalInicial, Math.Round(cuotaCapital * cuotasTranscurridas, 2));
+            return;
+        }
+
+        var tasaMensual = deuda.TasaMensualEquivalente / 100m;
+        var cuota = deuda.CuotaEstimada.GetValueOrDefault();
+        if (cuota <= 0 && deuda.PlazoMeses > 0)
+            cuota = CalcularCuotaFija(deuda.CapitalInicial, tasaMensual, deuda.PlazoMeses);
+        if (cuota <= 0) return;
+
+        var saldo = deuda.CapitalInicial;
+        for (var i = 0; i < cuotasTranscurridas && saldo > 0; i++)
+        {
+            var interes = Math.Round(saldo * tasaMensual, 2);
+            var capital = Math.Max(0, cuota - interes);
+            if (capital <= 0) break;
+            saldo = Math.Max(0, saldo - capital);
+        }
+        deuda.CapitalPagadoEstimado = Math.Round(deuda.CapitalInicial - saldo, 2);
+    }
+
+    private static int CalcularCuotasTranscurridas(Deuda deuda)
+    {
+        var hoy = DateTime.Today;
+        var fecha = deuda.FechaDesembolso.Date;
+        var diaPago = Math.Clamp(deuda.DiaPago ?? fecha.Day, 1, 28);
+        var primeraCuota = new DateTime(fecha.Year, fecha.Month, Math.Min(diaPago, DateTime.DaysInMonth(fecha.Year, fecha.Month)));
+        if (primeraCuota <= fecha) primeraCuota = primeraCuota.AddMonths(1);
+        if (hoy < primeraCuota) return 0;
+
+        var meses = ((hoy.Year - primeraCuota.Year) * 12) + hoy.Month - primeraCuota.Month;
+        var fechaCuotaMes = primeraCuota.AddMonths(meses);
+        if (hoy < fechaCuotaMes) meses--;
+        var cuotas = meses + 1;
+        if (deuda.PlazoMeses > 0) cuotas = Math.Min(cuotas, deuda.PlazoMeses);
+        return Math.Max(0, cuotas);
+    }
+
+    private static decimal CalcularCuotaFija(decimal capital, decimal tasaMensual, int plazoMeses)
+    {
+        if (plazoMeses <= 0) return 0;
+        if (tasaMensual <= 0) return Math.Round(capital / plazoMeses, 2);
+        var r = (double)tasaMensual;
+        var p = (double)capital;
+        var cuota = p * r / (1 - Math.Pow(1 + r, -plazoMeses));
+        return Math.Round((decimal)cuota, 2);
     }
 }
 

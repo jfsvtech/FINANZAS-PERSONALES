@@ -346,10 +346,7 @@ public class PrestamosController : BaseController
 
     private static void CompletarCalculosDeuda(Deuda deuda, IEnumerable<DeudaPago> pagos)
     {
-        deuda.CapitalPagado = pagos.Sum(x => x.Capital);
-        deuda.InteresPagado = pagos.Sum(x => x.Interes);
-        deuda.CostosPagados = pagos.Sum(x => x.Costos);
-        deuda.TotalPagado = pagos.Sum(x => x.MontoTotal);
+        CalculoDeudas.CompletarCalculos(deuda, pagos);
     }
 
     private ConversionMoneda Convertir(decimal monto, string monedaCodigo, DateTime fecha, decimal? tasaConversion)

@@ -121,6 +121,7 @@ public class InicioController : BaseController
         var deudas = con.Query<Deuda>(
             @"SELECT d.id,d.usuario_id AS UsuarioId,d.acreedor,d.fecha_desembolso AS FechaDesembolso,
                      d.capital_inicial AS CapitalInicial,d.tasa,d.periodo_tasa AS PeriodoTasa,
+                     d.sistema_pago AS SistemaPago,d.plazo_meses AS PlazoMeses,d.dia_pago AS DiaPago,
                      d.proxima_fecha_pago AS ProximaFechaPago,d.cuota_estimada AS CuotaEstimada,d.estado
               FROM deudas d
               WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')",
@@ -129,13 +130,7 @@ public class InicioController : BaseController
             @"SELECT deuda_id AS DeudaId, capital, interes, costos, monto_total AS MontoTotal
               FROM deuda_pagos WHERE usuario_id=@usuarioId",
             new { usuarioId = UsuarioId }).ToLookup(x => x.DeudaId);
-        foreach (var deuda in deudas)
-        {
-            deuda.CapitalPagado = pagosDeudas[deuda.Id].Sum(x => x.Capital);
-            deuda.InteresPagado = pagosDeudas[deuda.Id].Sum(x => x.Interes);
-            deuda.CostosPagados = pagosDeudas[deuda.Id].Sum(x => x.Costos);
-            deuda.TotalPagado = pagosDeudas[deuda.Id].Sum(x => x.MontoTotal);
-        }
+        foreach (var deuda in deudas) CalculoDeudas.CompletarCalculos(deuda, pagosDeudas[deuda.Id]);
         vm.DeudasActivas = deudas.Count;
         vm.SaldoPorPagar = deudas.Sum(x => x.SaldoCapital);
         vm.CuotasDeudaMes = deudas.Where(x => x.ProximaFechaPago >= desde && x.ProximaFechaPago < hasta)

@@ -114,10 +114,9 @@ public class AsistenteFinancieroService
               WHERE m.usuario_id=@usuarioId AND m.fecha>=@desde AND m.fecha<@hasta
                 AND m.tipo IN ('gasto','pago_tarjeta')", p) ?? 0;
         var liquidez = CrearDineroSeguro(usuarioId).LiquidezActual;
-        var deudaTotal = con.ExecuteScalar<decimal?>(
-            @"SELECT COALESCE((SELECT SUM(GREATEST(0,d.capital_inicial - COALESCE((SELECT SUM(dp.capital) FROM deuda_pagos dp WHERE dp.deuda_id=d.id),0)))
-                    FROM deudas d WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')),0)
-                + COALESCE((SELECT SUM(GREATEST(0,deuda)) FROM (
+        var saldoDeudasCalculado = CargarDeudasConCalculo(con, usuarioId).Sum(x => x.SaldoCapital);
+        var deudaTarjetasCalculada = con.ExecuteScalar<decimal?>(
+            @"SELECT COALESCE((SELECT SUM(GREATEST(0,deuda)) FROM (
                     SELECT COALESCE((SELECT SUM(CASE
                          WHEN m.tipo='gasto' AND m.cuenta_id=c.id THEN m.monto
                          WHEN m.tipo='pago_tarjeta' AND m.cuenta_destino_id=c.id THEN -m.monto
@@ -125,6 +124,7 @@ public class AsistenteFinancieroService
                     FROM movimientos m WHERE m.usuario_id=@usuarioId AND (m.cuenta_id=c.id OR m.cuenta_destino_id=c.id)),0) deuda
                     FROM cuentas c WHERE c.usuario_id=@usuarioId AND c.tipo='tarjeta_credito') t),0)",
             new { usuarioId }) ?? 0;
+        var deudaTotal = saldoDeudasCalculado + deudaTarjetasCalculada;
         var vencidos = con.ExecuteScalar<int>(
             @"SELECT COUNT(*) FROM deudas WHERE usuario_id=@usuarioId AND estado IN ('activa','vencida')
               AND proxima_fecha_pago IS NOT NULL AND proxima_fecha_pago<CURRENT_DATE", new { usuarioId });
@@ -318,10 +318,7 @@ public class AsistenteFinancieroService
             @"SELECT SUM(GREATEST(0,p.capital - COALESCE((SELECT SUM(pp.monto) FROM prestamo_pagos pp
               WHERE pp.prestamo_id=p.id AND pp.tipo='abono_capital'),0)))
               FROM prestamos p WHERE p.usuario_id=@usuarioId AND p.estado='activo'", new { usuarioId }) ?? 0;
-        vm.SaldoPorPagar = con.ExecuteScalar<decimal?>(
-            @"SELECT SUM(GREATEST(0,d.capital_inicial - COALESCE((SELECT SUM(dp.capital) FROM deuda_pagos dp
-              WHERE dp.deuda_id=d.id),0)))
-              FROM deudas d WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')", new { usuarioId }) ?? 0;
+        vm.SaldoPorPagar = CargarDeudasConCalculo(con, usuarioId).Sum(x => x.SaldoCapital);
         vm.ValorInversiones = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(GREATEST(0,COALESCE(v.valor,i.capital_inicial) +
               COALESCE((SELECT SUM(CASE WHEN m.tipo IN ('aporte','rendimiento') THEN m.monto ELSE -m.monto END)
@@ -367,23 +364,13 @@ public class AsistenteFinancieroService
                 AND ((m.tipo='gasto' AND m.cuenta_id=c.id) OR (m.tipo='pago_tarjeta' AND m.cuenta_destino_id=c.id))",
             new { usuarioId }) ?? 0;
         deudaTarjetas = Math.Max(0, deudaTarjetas);
-        var deudaPrincipal = con.QueryFirstOrDefault<Deuda>(
-            @"SELECT d.id,d.acreedor,d.tipo,d.capital_inicial AS CapitalInicial,d.tasa,d.periodo_tasa AS PeriodoTasa,
-                     COALESCE((SELECT SUM(dp.capital) FROM deuda_pagos dp WHERE dp.deuda_id=d.id),0) AS CapitalPagado
-              FROM deudas d
-              WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')
-              ORDER BY
-                (CASE WHEN d.periodo_tasa='anual'
-                    THEN (POWER(1 + d.tasa / 100.0, 1.0 / 12.0) - 1) * 100
-                    ELSE d.tasa END) DESC,
-                d.capital_inicial DESC
-              LIMIT 1", new { usuarioId });
-        var saldoDeudas = con.ExecuteScalar<decimal?>(
-            @"SELECT SUM(GREATEST(0,d.capital_inicial - COALESCE((
-                  SELECT SUM(dp.capital) FROM deuda_pagos dp WHERE dp.deuda_id=d.id
-              ),0)))
-              FROM deudas d WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')",
-            new { usuarioId }) ?? 0;
+        var deudasCalculadas = CargarDeudasConCalculo(con, usuarioId);
+        var deudaPrincipal = deudasCalculadas
+            .Where(x => (x.Estado is "activa" or "vencida") && x.SaldoCapital > 0)
+            .OrderByDescending(x => x.TasaMensualEquivalente)
+            .ThenByDescending(x => x.SaldoCapital)
+            .FirstOrDefault();
+        var saldoDeudas = deudasCalculadas.Sum(x => x.SaldoCapital);
         var proximaDeuda = con.QueryFirstOrDefault<Deuda>(
             @"SELECT id,acreedor,proxima_fecha_pago AS ProximaFechaPago,cuota_estimada AS CuotaEstimada
               FROM deudas
@@ -721,6 +708,25 @@ public class AsistenteFinancieroService
     }
 
     private static string Normalizar(string texto) => (texto ?? "").Trim().ToLowerInvariant();
+
+    private static List<Deuda> CargarDeudasConCalculo(System.Data.IDbConnection con, int usuarioId)
+    {
+        var deudas = con.Query<Deuda>(
+            @"SELECT id,usuario_id AS UsuarioId,acreedor,tipo,fecha_desembolso AS FechaDesembolso,
+                     capital_inicial AS CapitalInicial,tasa,periodo_tasa AS PeriodoTasa,
+                     sistema_pago AS SistemaPago,plazo_meses AS PlazoMeses,dia_pago AS DiaPago,
+                     cuota_estimada AS CuotaEstimada,proxima_fecha_pago AS ProximaFechaPago,estado
+              FROM deudas
+              WHERE usuario_id=@usuarioId AND estado IN ('activa','vencida')",
+            new { usuarioId }).ToList();
+        var pagos = con.Query<DeudaPago>(
+            @"SELECT deuda_id AS DeudaId,capital,interes,costos,monto_total AS MontoTotal
+              FROM deuda_pagos WHERE usuario_id=@usuarioId",
+            new { usuarioId }).ToLookup(x => x.DeudaId);
+        foreach (var deuda in deudas)
+            CalculoDeudas.CompletarCalculos(deuda, pagos[deuda.Id]);
+        return deudas;
+    }
 
     public List<RecordatorioVm> CrearRecordatorios(int usuarioId)
     {
