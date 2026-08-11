@@ -248,8 +248,10 @@ public class ComparacionCategoriaVm
 
 public class FlujoDiaVm
 {
+    public DateTime Fecha { get; set; }
     public int Dia { get; set; }
     public decimal Balance { get; set; }
+    public string Etiqueta => Fecha == default ? $"Dia {Dia}" : Fecha.ToString("dd MMM");
 }
 
 // ---------- ViewModels ----------
@@ -258,6 +260,14 @@ public class DashboardVm
 {
     public int Anio { get; set; }
     public int Mes { get; set; }
+    public DateTime Desde { get; set; }
+    public DateTime Hasta { get; set; }
+    public bool RangoPersonalizado { get; set; }
+    public string PeriodoTexto => Desde == default || Hasta == default
+        ? new DateTime(Anio, Mes, 1).ToString("MMMM yyyy")
+        : Desde.Year == Hasta.Year && Desde.Month == Hasta.Month && Desde.Day == 1 && Hasta == Desde.AddMonths(1).AddDays(-1)
+            ? Desde.ToString("MMMM yyyy")
+            : $"{Desde:dd MMM yyyy} - {Hasta:dd MMM yyyy}";
     public decimal IngresosMes { get; set; }
     public decimal GastosMes { get; set; }
     public decimal GastosTarjetaMes { get; set; }
@@ -457,8 +467,16 @@ public class EventoFinancieroVm
     public string Action { get; set; } = "Index";
     public int? RouteId { get; set; }
     public string AccionTexto { get; set; } = "Ver";
+    public string? AccionSecundariaTexto { get; set; }
     public string Color { get; set; } = "#7C3AED";
     public string Url { get; set; } = "";
+    public string? UrlSecundaria { get; set; }
+    public string ModalTitulo => Tipo switch
+    {
+        "periodico" => "Que deseas hacer con este recurrente?",
+        "tarjeta" => "Que deseas registrar desde el calendario?",
+        _ => "Accion del calendario"
+    };
     public bool Vencido => Fecha.Date < DateTime.Today;
 }
 

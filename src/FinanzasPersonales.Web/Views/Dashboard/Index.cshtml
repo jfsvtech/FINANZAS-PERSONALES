@@ -4,27 +4,49 @@
     var fechaActual = new DateTime(Model.Anio, Model.Mes, 1);
     var anterior = fechaActual.AddMonths(-1);
     var siguiente = fechaActual.AddMonths(1);
-    var nombreMes = fechaActual.ToString("MMMM yyyy");
-    var desdeMovimientos = fechaActual;
-    var hastaMovimientos = fechaActual.AddMonths(1).AddDays(-1);
+    var nombrePeriodo = Model.PeriodoTexto;
+    var desdeMovimientos = Model.Desde == default ? fechaActual : Model.Desde;
+    var hastaMovimientos = Model.Hasta == default ? fechaActual.AddMonths(1).AddDays(-1) : Model.Hasta;
     var desdeHistorico = new DateTime(2000, 1, 1);
+    var hoy = DateTime.Today;
+    var esteMesD = new DateTime(hoy.Year, hoy.Month, 1);
+    var esteMesH = esteMesD.AddMonths(1).AddDays(-1);
+    var tresMesesD = esteMesD.AddMonths(-2);
+    var anioD = new DateTime(hoy.Year, 1, 1);
+    var anioH = new DateTime(hoy.Year, 12, 31);
     string F(DateTime f) => f.ToString("yyyy-MM-dd");
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h4 class="mb-0"><i class="bi bi-speedometer2"></i> Tablero</h4>
+    <h4 class="mb-0"><i class="bi bi-speedometer2"></i> Analisis financiero <span class="text-muted fs-6 text-capitalize">@nombrePeriodo</span></h4>
     <div class="btn-group">
         <a class="btn btn-outline-primary" asp-action="Index" asp-route-anio="@anterior.Year" asp-route-mes="@anterior.Month"><i class="bi bi-chevron-left"></i></a>
-        <span class="btn btn-primary text-capitalize fw-bold" style="pointer-events:none;">@nombreMes</span>
+        <span class="btn btn-primary text-capitalize fw-bold" style="pointer-events:none;">@nombrePeriodo</span>
         <a class="btn btn-outline-primary" asp-action="Index" asp-route-anio="@siguiente.Year" asp-route-mes="@siguiente.Month"><i class="bi bi-chevron-right"></i></a>
     </div>
 </div>
+
+<form method="get" class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <div class="d-flex gap-1 flex-wrap mb-2">
+            <span class="text-muted small me-1 align-self-center"><i class="bi bi-lightning"></i> Periodo:</span>
+            <a class="btn btn-sm @(Model.Desde == esteMesD && Model.Hasta == esteMesH ? "btn-primary" : "btn-outline-primary")" asp-action="Index" asp-route-desde="@F(esteMesD)" asp-route-hasta="@F(esteMesH)">Este mes</a>
+            <a class="btn btn-sm @(Model.Desde == tresMesesD && Model.Hasta == esteMesH ? "btn-primary" : "btn-outline-primary")" asp-action="Index" asp-route-desde="@F(tresMesesD)" asp-route-hasta="@F(esteMesH)">Ultimos 3 meses</a>
+            <a class="btn btn-sm @(Model.Desde == anioD && Model.Hasta == anioH ? "btn-primary" : "btn-outline-primary")" asp-action="Index" asp-route-desde="@F(anioD)" asp-route-hasta="@F(anioH)">Este año</a>
+        </div>
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-3"><label class="form-label small mb-0">Desde</label><input type="date" name="desde" class="form-control form-control-sm" value="@F(desdeMovimientos)" /></div>
+            <div class="col-6 col-md-3"><label class="form-label small mb-0">Hasta</label><input type="date" name="hasta" class="form-control form-control-sm" value="@F(hastaMovimientos)" /></div>
+            <div class="col-12 col-md-2"><button class="btn btn-outline-primary btn-sm w-100"><i class="bi bi-funnel"></i> Aplicar rango</button></div>
+        </div>
+    </div>
+</form>
 
 <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-5 g-3 mb-3">
     <div class="col">
         <a class="card border-0 shadow-sm h-100 dashboard-kpi-card text-decoration-none" asp-controller="Movimientos" asp-action="Index" asp-route-desde="@F(desdeMovimientos)" asp-route-hasta="@F(hastaMovimientos)" asp-route-tipo="ingreso">
             <div class="card-body">
-                <div class="text-muted small">Ingresos del mes</div>
+                <div class="text-muted small">Ingresos del periodo</div>
                 <div class="fs-4 fw-bold text-success">@Model.IngresosMes.ToString("C0")</div>
                 <div class="text-muted small"><i class="bi bi-arrow-right"></i> Ver movimientos</div>
             </div>
@@ -33,7 +55,7 @@
     <div class="col">
         <a class="card border-0 shadow-sm h-100 dashboard-kpi-card text-decoration-none" asp-controller="Movimientos" asp-action="Index" asp-route-desde="@F(desdeMovimientos)" asp-route-hasta="@F(hastaMovimientos)" asp-route-tipo="gasto">
             <div class="card-body">
-                <div class="text-muted small">Consumo del mes <span title="Incluye compras con tarjeta; no todo sale de caja este mes"><i class="bi bi-info-circle"></i></span></div>
+                <div class="text-muted small">Consumo del periodo <span title="Incluye compras con tarjeta; no todo sale de caja en este periodo"><i class="bi bi-info-circle"></i></span></div>
                 <div class="fs-4 fw-bold text-danger">@Model.GastosMes.ToString("C0")</div>
                 <div class="text-muted small">Con tarjeta: @Model.GastosTarjetaMes.ToString("C0")</div>
             </div>
@@ -63,12 +85,14 @@
                 <a class="text-decoration-none d-block" asp-controller="Movimientos" asp-action="Index" asp-route-desde="@F(desdeMovimientos)" asp-route-hasta="@F(hastaMovimientos)" asp-route-flujoCaja="true">
                     <div class="text-muted small">Dinero disponible</div>
                     <div class="fs-4 fw-bold @(Model.DisponibleMes >= 0 ? "text-primary" : "text-danger")">@Model.DisponibleMes.ToString("C0")</div>
-                    <div class="text-muted small">@(Model.IncluirSaldoAnterior ? "Incluye saldo anterior" : "Solo mes actual")</div>
+                    <div class="text-muted small">@(Model.IncluirSaldoAnterior ? "Incluye saldo anterior" : "Solo periodo actual")</div>
                 </a>
                 <form method="post" asp-action="GuardarConfiguracionSaldo" class="mt-2">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="anio" value="@Model.Anio" />
                     <input type="hidden" name="mes" value="@Model.Mes" />
+                    <input type="hidden" name="desde" value="@F(desdeMovimientos)" />
+                    <input type="hidden" name="hasta" value="@F(hastaMovimientos)" />
                     <input type="hidden" name="incluirSaldoAnterior" value="@(!Model.IncluirSaldoAnterior ? "true" : "false")" />
                     <button class="btn @(Model.IncluirSaldoAnterior ? "btn-primary" : "btn-outline-primary") btn-sm w-100">
                         <i class="bi @(Model.IncluirSaldoAnterior ? "bi-toggle-on" : "bi-toggle-off")"></i>
@@ -106,7 +130,7 @@
 <div class="row g-3 mb-3">
     <div class="col-12 col-lg-5">
         <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white fw-bold"><i class="bi bi-arrow-left-right"></i> Comparacion con el mes anterior</div>
+            <div class="card-header bg-white fw-bold"><i class="bi bi-arrow-left-right"></i> Comparacion con periodo anterior</div>
             <div class="card-body">
                 @{
                     var difIngresos = Model.IngresosMes - Model.IngresosMesAnterior;
@@ -126,7 +150,7 @@
     </div>
     <div class="col-12 col-lg-7">
         <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white fw-bold"><i class="bi bi-activity"></i> Flujo de caja acumulado durante el mes</div>
+            <div class="card-header bg-white fw-bold"><i class="bi bi-activity"></i> Flujo de caja acumulado durante el periodo</div>
             <div class="card-body"><canvas id="graficaFlujo" style="max-height:260px"></canvas></div>
         </div>
     </div>
@@ -137,7 +161,7 @@
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white p-0">
             <button class="collapse-section-head" type="button" data-bs-toggle="collapse" data-bs-target="#recurrentesPendientes" aria-expanded="false">
-                <strong><i class="bi bi-arrow-repeat text-warning"></i> Recurrentes pendientes del mes</strong>
+                <strong><i class="bi bi-arrow-repeat text-warning"></i> Recurrentes pendientes del periodo</strong>
                 <span class="badge text-bg-warning">@Model.PeriodicosPendientes.Count</span>
                 <i class="bi bi-chevron-down"></i>
             </button>
@@ -180,14 +204,14 @@
                 }
                 else
                 {
-                    <p class="text-muted text-center my-5">Sin gastos registrados este mes.</p>
+                    <p class="text-muted text-center my-5">Sin gastos registrados en este periodo.</p>
                 }
             </div>
         </div>
     </div>
     <div class="col-12 col-lg-7">
         <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white fw-bold"><i class="bi bi-bar-chart"></i> Ingresos vs salidas de caja (ultimos 12 meses)</div>
+            <div class="card-header bg-white fw-bold"><i class="bi bi-bar-chart"></i> Ingresos vs salidas de caja por mes</div>
             <div class="card-body">
                 <canvas id="graficaEvolucion" style="max-height:300px;"></canvas>
             </div>
@@ -216,7 +240,7 @@
 <div class="row g-3">
     <div class="col-12 col-lg-6">
         <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white fw-bold"><i class="bi bi-bullseye"></i> Presupuestos del mes</div>
+            <div class="card-header bg-white fw-bold"><i class="bi bi-bullseye"></i> Presupuestos del periodo</div>
             <div class="card-body">
                 @if (!Model.Presupuestos.Any())
                 {
@@ -340,10 +364,10 @@
         }
     });
 
-    const flujo = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.FlujoDiario.Select(x => new { dia=x.Dia, balance=x.Balance })));
+    const flujo = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.FlujoDiario.Select(x => new { fecha=x.Fecha.ToString("yyyy-MM-dd"), etiqueta=x.Etiqueta, balance=x.Balance })));
     new Chart(document.getElementById('graficaFlujo'), {
-        type:'line', data:{labels:flujo.map(x=>'Dia '+x.dia),datasets:[{label:'Flujo acumulado',data:flujo.map(x=>x.balance),borderColor:tc.purple,backgroundColor:'rgba(124,58,237,.15)',fill:true,tension:.3}]},
-        options:{onClick:(evt,elements)=>{if(!elements.length)return;const dia=flujo[elements[0].index].dia;const fecha=`@Model.Anio-${String(@Model.Mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;irMov({desde:fecha,hasta:fecha,flujoCaja:'true'});},plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}
+        type:'line', data:{labels:flujo.map(x=>x.etiqueta),datasets:[{label:'Flujo acumulado',data:flujo.map(x=>x.balance),borderColor:tc.purple,backgroundColor:'rgba(124,58,237,.15)',fill:true,tension:.3}]},
+        options:{onClick:(evt,elements)=>{if(!elements.length)return;const fecha=flujo[elements[0].index].fecha;irMov({desde:fecha,hasta:fecha,flujoCaja:'true'});},plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}
     });
     new Chart(document.getElementById('graficaClases'), {
         type:'doughnut',data:{labels:['Fijos','Variables y periodicos'],datasets:[{data:[@Model.GastosFijos,@Model.GastosVariables],backgroundColor:[tc.purple,tc.gold]}]},

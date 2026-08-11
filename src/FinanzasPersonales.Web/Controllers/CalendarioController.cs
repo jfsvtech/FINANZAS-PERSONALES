@@ -106,6 +106,7 @@ public class CalendarioController : BaseController
                 RouteId=x.Id,AccionTexto="Registrar rendimiento",Color=x.Color
             }));
         foreach (var evento in eventos)
+        {
             evento.Url = evento.Tipo switch
             {
                 "tarjeta" => Url.Action("Index", "Movimientos", new { nuevo=true, tipo="pago_tarjeta" }) ?? "",
@@ -115,6 +116,17 @@ public class CalendarioController : BaseController
                 "inversion" => Url.Action("Detalle", "Inversiones", new { id=evento.RouteId, accion="rendimiento" }) ?? "",
                 _ => Url.Action(evento.Action, evento.Controller, new { id=evento.RouteId }) ?? ""
             };
+            if (evento.Tipo == "periodico")
+            {
+                evento.AccionSecundariaTexto = "Ver / editar recurrente";
+                evento.UrlSecundaria = Url.Action("Index", "Periodicos") ?? "";
+            }
+            else if (evento.Tipo == "tarjeta")
+            {
+                evento.AccionSecundariaTexto = "Crear recurrente";
+                evento.UrlSecundaria = Url.Action("Index", "Periodicos") ?? "";
+            }
+        }
         return eventos.OrderBy(x => x.Fecha).ThenBy(x => x.Titulo).ToList();
     }
 

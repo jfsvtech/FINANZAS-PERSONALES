@@ -166,8 +166,8 @@
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
-                    <th>Fecha</th><th>Tipo</th><th>Cuenta</th><th class="d-none d-md-table-cell">Categoria</th>
-                    <th class="d-none d-md-table-cell">Descripcion</th><th class="text-end">Monto</th><th></th>
+                    <th>Fecha</th><th>Tipo</th><th class="d-none d-md-table-cell">Cuenta</th><th class="d-none d-md-table-cell">Categoria</th>
+                    <th>Descripcion</th><th class="text-end">Monto</th><th></th>
                 </tr>
             </thead>
             <tbody>
@@ -181,7 +181,7 @@
                         else if (m.Tipo == "transferencia") { <span class="badge text-bg-info">Transferencia</span> }
                         else { <span class="badge text-bg-warning">Pago tarjeta</span> }
                     </td>
-                    <td>
+                    <td class="d-none d-md-table-cell">
                         @m.CuentaNombre
                         @if (m.Tipo is "pago_tarjeta" or "transferencia") { <i class="bi bi-arrow-right"></i> @m.CuentaDestinoNombre }
                     </td>
@@ -191,7 +191,12 @@
                             <span class="category-chip" style="--category-color:@(m.CategoriaColor ?? "#6c757d");"><i class="bi @m.CategoriaIcono"></i>@m.CategoriaNombre</span>
                         }
                     </td>
-                    <td class="d-none d-md-table-cell text-muted small">@m.Descripcion</td>
+                    <td>
+                        <span class="fw-semibold">@(!string.IsNullOrWhiteSpace(m.Descripcion) ? m.Descripcion : m.CategoriaNombre ?? m.TipoTexto)</span>
+                        <small class="d-block d-md-none text-muted">
+                            @m.CuentaNombre@if (m.Tipo is "pago_tarjeta" or "transferencia") { <text> -> @m.CuentaDestinoNombre</text> }
+                        </small>
+                    </td>
                     <td class="text-end text-nowrap @(m.Tipo == "ingreso" ? "text-success" : m.Tipo == "gasto" ? "text-danger" : m.Tipo == "transferencia" ? "text-info" : "text-warning")">
                         @{
                             var signo = m.Tipo == "ingreso" ? "+" : m.Tipo == "transferencia" ? "" : "-";

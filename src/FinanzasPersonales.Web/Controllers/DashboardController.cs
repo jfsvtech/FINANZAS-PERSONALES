@@ -10,19 +10,26 @@ public class DashboardController : BaseController
     private readonly Db _db;
     public DashboardController(Db db) => _db = db;
 
-    public IActionResult Index(int? anio, int? mes)
+    public IActionResult Index(int? anio, int? mes, DateTime? desde, DateTime? hasta)
     {
         var hoy = DateTime.Today;
         var a = anio ?? hoy.Year;
         var m = mes ?? hoy.Month;
-        var desde = new DateTime(a, m, 1);
-        var hasta = desde.AddMonths(1);
-        var desdeAnterior = desde.AddMonths(-1);
+        var rangoPersonalizado = desde.HasValue || hasta.HasValue;
+        var desdePeriodo = (desde ?? new DateTime(a, m, 1)).Date;
+        var hastaPeriodo = (hasta ?? (rangoPersonalizado ? hoy : desdePeriodo.AddMonths(1).AddDays(-1))).Date;
+        if (hastaPeriodo < desdePeriodo) (desdePeriodo, hastaPeriodo) = (hastaPeriodo, desdePeriodo);
+        a = desdePeriodo.Year;
+        m = desdePeriodo.Month;
+        var hastaExclusivo = hastaPeriodo.AddDays(1);
+        var diasPeriodo = Math.Max(1, (hastaExclusivo - desdePeriodo).Days);
+        var desdeAnterior = desdePeriodo.AddDays(-diasPeriodo);
+        var hastaAnterior = desdePeriodo;
 
         using var con = _db.Abrir();
-        var vm = new DashboardVm { Anio = a, Mes = m };
+        var vm = new DashboardVm { Anio = a, Mes = m, Desde = desdePeriodo, Hasta = hastaPeriodo, RangoPersonalizado = rangoPersonalizado };
 
-        var p = new { usuarioId = UsuarioId, desde, hasta };
+        var p = new { usuarioId = UsuarioId, desde = desdePeriodo, hasta = hastaExclusivo };
 
         vm.IngresosMes = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(monto) FROM movimientos
@@ -52,7 +59,7 @@ public class DashboardController : BaseController
         vm.IngresosMesAnterior = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(monto) FROM movimientos
               WHERE usuario_id=@usuarioId AND tipo='ingreso' AND fecha>=@desdeAnterior AND fecha<@desde",
-            new { usuarioId = UsuarioId, desdeAnterior, desde }) ?? 0;
+            new { usuarioId = UsuarioId, desdeAnterior, desde = hastaAnterior }) ?? 0;
         vm.GastosMesAnterior = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(CASE
                     WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN m.monto
@@ -62,7 +69,7 @@ public class DashboardController : BaseController
               JOIN cuentas c ON c.id=m.cuenta_id
               WHERE m.usuario_id=@usuarioId AND m.fecha>=@desdeAnterior AND m.fecha<@desde
                 AND m.tipo IN ('gasto','pago_tarjeta')",
-            new { usuarioId = UsuarioId, desdeAnterior, desde }) ?? 0;
+            new { usuarioId = UsuarioId, desdeAnterior, desde = hastaAnterior }) ?? 0;
 
         vm.SaldoAnterior = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(CASE
@@ -120,7 +127,7 @@ public class DashboardController : BaseController
               HAVING COALESCE(SUM(m.monto),0)>0
               ORDER BY (COALESCE(SUM(m.monto) FILTER (WHERE m.fecha>=@desde AND m.fecha<@hasta),0)
                       - COALESCE(SUM(m.monto) FILTER (WHERE m.fecha>=@desdeAnterior AND m.fecha<@desde),0)) DESC",
-            new { usuarioId = UsuarioId, desdeAnterior, desde, hasta }).ToList();
+            new { usuarioId = UsuarioId, desdeAnterior, desde = desdePeriodo, hasta = hastaExclusivo }).ToList();
         vm.GastosFijos = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(m.monto) FROM movimientos m JOIN categorias c ON c.id=m.categoria_id
               WHERE m.usuario_id=@usuarioId AND m.tipo='gasto' AND c.clase='fijo' AND m.fecha>=@desde AND m.fecha<@hasta", p) ?? 0;
@@ -128,21 +135,23 @@ public class DashboardController : BaseController
             @"SELECT SUM(m.monto) FROM movimientos m JOIN categorias c ON c.id=m.categoria_id
               WHERE m.usuario_id=@usuarioId AND m.tipo='gasto' AND c.clase<>'fijo' AND m.fecha>=@desde AND m.fecha<@hasta", p) ?? 0;
         vm.FlujoDiario = con.Query<FlujoDiaVm>(
-            @"SELECT EXTRACT(DAY FROM fecha)::int AS Dia,
+            @"SELECT fecha::date AS Fecha, EXTRACT(DAY FROM fecha)::int AS Dia,
                      SUM(SUM(CASE
                          WHEN m.tipo='ingreso' AND c.tipo<>'tarjeta_credito' THEN m.monto
                          WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN -m.monto
                          WHEN m.tipo='pago_tarjeta' THEN -m.monto
                          ELSE 0 END))
-                     OVER (ORDER BY EXTRACT(DAY FROM fecha)) AS Balance
+                     OVER (ORDER BY fecha::date) AS Balance
               FROM movimientos m
               JOIN cuentas c ON c.id=m.cuenta_id
               WHERE m.usuario_id=@usuarioId AND m.fecha>=@desde AND m.fecha<@hasta
                 AND m.tipo IN ('ingreso','gasto','pago_tarjeta')
-              GROUP BY fecha ORDER BY fecha", p).ToList();
+              GROUP BY fecha::date ORDER BY fecha::date", p).ToList();
 
         // Ultimos 12 meses: ingresos vs gastos
-        var inicioSerie = new DateTime(a, m, 1).AddMonths(-11);
+        var inicioSerie = rangoPersonalizado
+            ? new DateTime(desdePeriodo.Year, desdePeriodo.Month, 1)
+            : new DateTime(a, m, 1).AddMonths(-11);
         vm.SerieMensual = con.Query<SerieMesVm>(
             @"SELECT EXTRACT(YEAR FROM fecha)::int AS Anio, EXTRACT(MONTH FROM fecha)::int AS Mes,
                      SUM(CASE WHEN m.tipo='ingreso' THEN m.monto ELSE 0 END) AS Ingresos,
@@ -155,7 +164,7 @@ public class DashboardController : BaseController
               WHERE m.usuario_id=@usuarioId AND m.fecha>=@inicioSerie AND m.fecha<@hasta
                 AND m.tipo IN ('ingreso','gasto','pago_tarjeta')
               GROUP BY 1,2 ORDER BY 1,2",
-            new { usuarioId = UsuarioId, inicioSerie, hasta }).ToList();
+            new { usuarioId = UsuarioId, inicioSerie, hasta = hastaExclusivo }).ToList();
 
         // Presupuestos del mes con lo gastado
         vm.Presupuestos = con.Query<Presupuesto>(
@@ -180,7 +189,7 @@ public class DashboardController : BaseController
               LEFT JOIN cuentas cu ON cu.id=g.cuenta_id
               WHERE g.usuario_id=@usuarioId AND g.activo AND g.proxima_fecha < @hasta
               ORDER BY g.proxima_fecha",
-            new { usuarioId = UsuarioId, hasta }).ToList();
+            new { usuarioId = UsuarioId, hasta = hastaExclusivo }).ToList();
 
         foreach (var g in vm.PeriodicosPendientes.Take(3))
             vm.Alertas.Add(new AlertaFinancieraVm
@@ -220,7 +229,7 @@ public class DashboardController : BaseController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult GuardarConfiguracionSaldo(bool incluirSaldoAnterior, int anio, int mes)
+    public IActionResult GuardarConfiguracionSaldo(bool incluirSaldoAnterior, int anio, int mes, DateTime? desde, DateTime? hasta)
     {
         using var con = _db.Abrir();
         con.Execute(
@@ -231,6 +240,12 @@ public class DashboardController : BaseController
         TempData["Ok"] = incluirSaldoAnterior
             ? "El disponible mensual ahora incluye el saldo acumulado anterior."
             : "El disponible mensual ahora muestra solo el resultado del mes.";
-        return RedirectToAction("Index", new { anio, mes });
+        return RedirectToAction("Index", new
+        {
+            anio,
+            mes,
+            desde = desde?.ToString("yyyy-MM-dd"),
+            hasta = hasta?.ToString("yyyy-MM-dd")
+        });
     }
 }
