@@ -60,10 +60,10 @@
 }
 
 <div class="row g-2 mb-3 text-center">
-    <div class="col-6 col-md-3"><div class="mini-stat mini-stat-danger"><span>Saldo total</span><strong>@Model.SaldoTotal.ToString("C0")</strong></div></div>
-    <div class="col-6 col-md-3"><div class="mini-stat"><span>Cuotas base</span><strong>@Model.CuotasBase.ToString("C0")</strong></div></div>
-    <div class="col-6 col-md-3"><div class="mini-stat"><span>Interes mensual</span><strong>@Model.InteresMensualTotal.ToString("C0")</strong></div></div>
-    <div class="col-6 col-md-3"><div class="mini-stat mini-stat-success"><span>Libre de deudas</span><strong>@(Model.FechaLibreDeDeudas?.ToString("MMM yyyy") ?? "Sin deudas")</strong><small>@Model.MesesEstimados meses</small></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat strategy-stat mini-stat-danger"><span>Saldo total</span><strong>@Model.SaldoTotal.ToString("C0")</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat strategy-stat"><span>Cuotas base</span><strong>@Model.CuotasBase.ToString("C0")</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat strategy-stat"><span>Interes mensual</span><strong>@Model.InteresMensualTotal.ToString("C0")</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat strategy-stat mini-stat-success"><span>Libre de deudas</span><strong>@(Model.FechaLibreDeDeudas?.ToString("MMM yyyy") ?? "Sin deudas")</strong><small>@(Model.MesesEstimados >= 600 ? "600+ meses" : $"{Model.MesesEstimados} meses")</small></div></div>
 </div>
 
 <div class="row g-3">
@@ -100,14 +100,82 @@
     </div>
 </div>
 
+<div class="row g-3 mt-1">
+    <div class="col-12 col-xl-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold"><i class="bi bi-bar-chart-steps"></i> Avance por deuda</div>
+            <div class="card-body"><canvas id="graficaAvanceDeudas" style="max-height:320px"></canvas></div>
+        </div>
+    </div>
+    <div class="col-12 col-xl-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold"><i class="bi bi-pie-chart"></i> Composicion de pagos</div>
+            <div class="card-body"><canvas id="graficaPagosDeudas" style="max-height:320px"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-3">
+    <div class="card-header fw-bold"><i class="bi bi-clipboard-data"></i> Seguimiento de pago</div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>Deuda</th><th class="text-end">Capital inicial</th><th class="text-end">Abonado capital</th><th class="text-end">Saldo</th><th class="text-end">Interes pagado</th><th class="text-end">Avance</th></tr></thead>
+            <tbody>
+            @foreach (var d in Model.Deudas.OrderByDescending(x => x.SaldoCapital))
+            {
+                <tr>
+                    <td><strong>@d.Acreedor</strong><small class="d-block text-muted">Proximo pago @(d.ProximaFechaPago?.ToString("dd MMM yyyy") ?? "sin fecha")</small></td>
+                    <td class="text-end">@d.CapitalInicial.ToString("C0")</td>
+                    <td class="text-end text-success">@d.CapitalPagado.ToString("C0")</td>
+                    <td class="text-end fw-bold text-danger">@d.SaldoCapital.ToString("C0")</td>
+                    <td class="text-end text-warning">@d.InteresPagado.ToString("C0")</td>
+                    <td class="text-end"><span class="badge text-bg-primary">@d.Avance%</span></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.strategy-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.15rem;min-height:78px}
+.strategy-stat strong{display:block;line-height:1.08;word-break:break-word}
+.strategy-stat small{display:block;color:var(--muted);font-weight:700;line-height:1.1}
+</style>
+
 @section Scripts {
 <script>
 const plan=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Plan.Select(x=>new{mes=x.Mes,objetivo=x.Objetivo,saldo=x.SaldoRestante})));
+const deudas=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Deudas.Select(x=>new{
+    acreedor=x.Acreedor,
+    capital=x.CapitalInicial,
+    abonado=x.CapitalPagado,
+    saldo=x.SaldoCapital,
+    interes=x.InteresPagado,
+    avance=x.Avance
+})));
+const fmt=new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
 if(window.Chart){
  new Chart(document.getElementById('graficaPlanDeudas'),{
   type:'line',
   data:{labels:plan.map(x=>'Mes '+x.mes),datasets:[{label:'Saldo proyectado',data:plan.map(x=>x.saldo),borderColor:'#7C3AED',backgroundColor:'rgba(124,58,237,.12)',fill:true,tension:.35}]},
-  options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{afterLabel:ctx=>'Objetivo: '+(plan[ctx.dataIndex]?.objetivo||'')}}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}
+  options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>'Saldo: '+fmt.format(ctx.parsed.y),afterLabel:ctx=>'Objetivo: '+(plan[ctx.dataIndex]?.objetivo||'')}}},scales:{y:{ticks:{callback:v=>fmt.format(v)}}}}
+ });
+ new Chart(document.getElementById('graficaAvanceDeudas'),{
+  type:'bar',
+  data:{labels:deudas.map(x=>x.acreedor),datasets:[
+   {label:'Abonado a capital',data:deudas.map(x=>x.abonado),backgroundColor:'#2FBF71'},
+   {label:'Saldo pendiente',data:deudas.map(x=>x.saldo),backgroundColor:'#E15B64'}
+  ]},
+  options:{responsive:true,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt.format(ctx.parsed.y)}}},scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>fmt.format(v)}}}}
+ });
+ new Chart(document.getElementById('graficaPagosDeudas'),{
+  type:'bar',
+  data:{labels:deudas.map(x=>x.acreedor),datasets:[
+   {label:'Capital abonado',data:deudas.map(x=>x.abonado),backgroundColor:'#7C3AED'},
+   {label:'Interes pagado',data:deudas.map(x=>x.interes),backgroundColor:'#D4AF37'}
+  ]},
+  options:{responsive:true,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmt.format(ctx.parsed.y)}}},scales:{y:{ticks:{callback:v=>fmt.format(v)}}}}
  });
 }
 </script>

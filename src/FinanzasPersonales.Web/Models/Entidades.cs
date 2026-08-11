@@ -858,12 +858,17 @@ public class EstrategiaDeudaItemVm
     public int Id { get; set; }
     public string Acreedor { get; set; } = "";
     public string Tipo { get; set; } = "";
+    public decimal CapitalInicial { get; set; }
+    public decimal CapitalPagado { get; set; }
+    public decimal InteresPagado { get; set; }
     public decimal SaldoCapital { get; set; }
     public decimal TasaMensual { get; set; }
     public decimal CuotaReferencia { get; set; }
+    public DateTime? ProximaFechaPago { get; set; }
     public int OrdenAvalancha { get; set; }
     public int OrdenBolaNieve { get; set; }
     public decimal InteresMensualEstimado => Math.Round(SaldoCapital * TasaMensual / 100m, 0);
+    public decimal Avance => CapitalInicial > 0 ? Math.Round(CapitalPagado * 100 / CapitalInicial, 1) : 0;
 }
 
 public class EstrategiaDeudasVm

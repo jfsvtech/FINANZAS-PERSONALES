@@ -71,9 +71,13 @@ public class DeudasController : BaseController
             Id = x.Id,
             Acreedor = x.Acreedor,
             Tipo = x.TipoTexto,
+            CapitalInicial = x.CapitalInicial,
+            CapitalPagado = x.CapitalReconocido,
+            InteresPagado = x.InteresPagado,
             SaldoCapital = x.SaldoCapital,
             TasaMensual = x.TasaMensualEquivalente,
-            CuotaReferencia = Math.Max(x.CuotaEstimada ?? 0, x.InteresMensualEstimado)
+            CuotaReferencia = Math.Max(x.CuotaEstimada ?? 0, x.InteresMensualEstimado),
+            ProximaFechaPago = x.ProximaFechaPago
         }).ToList();
 
         var avalancha = items.OrderByDescending(x => x.TasaMensual).ThenByDescending(x => x.SaldoCapital).ToList();
