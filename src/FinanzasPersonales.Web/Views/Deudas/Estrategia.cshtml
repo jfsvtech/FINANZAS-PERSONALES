@@ -60,10 +60,10 @@
 }
 
 <div class="row g-2 mb-3 text-center">
-    <div class="col-6 col-md-3"><div class="mini-stat strategy-stat mini-stat-danger"><span>Saldo total</span><strong>@Model.SaldoTotal.ToString("C0")</strong></div></div>
-    <div class="col-6 col-md-3"><div class="mini-stat strategy-stat"><span>Cuotas base</span><strong>@Model.CuotasBase.ToString("C0")</strong></div></div>
-    <div class="col-6 col-md-3"><div class="mini-stat strategy-stat"><span>Interes mensual</span><strong>@Model.InteresMensualTotal.ToString("C0")</strong></div></div>
-    <div class="col-6 col-md-3"><div class="mini-stat strategy-stat mini-stat-success"><span>Libre de deudas</span><strong>@(Model.FechaLibreDeDeudas?.ToString("MMM yyyy") ?? "Sin deudas")</strong><small>@(Model.MesesEstimados >= 600 ? "600+ meses" : $"{Model.MesesEstimados} meses")</small></div></div>
+    <div class="col-12 col-sm-6 col-xl-3"><div class="mini-stat strategy-stat mini-stat-danger"><span>Saldo total</span><strong>@Model.SaldoTotal.ToString("C0")</strong></div></div>
+    <div class="col-12 col-sm-6 col-xl-3"><div class="mini-stat strategy-stat"><span>Cuotas base</span><strong>@Model.CuotasBase.ToString("C0")</strong></div></div>
+    <div class="col-12 col-sm-6 col-xl-3"><div class="mini-stat strategy-stat"><span>Interes mensual</span><strong>@Model.InteresMensualTotal.ToString("C0")</strong></div></div>
+    <div class="col-12 col-sm-6 col-xl-3"><div class="mini-stat strategy-stat mini-stat-success"><span>Libre de deudas</span><strong>@(Model.FechaLibreDeDeudas?.ToString("MMM yyyy") ?? "Sin deudas")</strong><small>@(Model.MesesEstimados >= 600 ? "600+ meses" : $"{Model.MesesEstimados} meses")</small></div></div>
 </div>
 
 <div class="row g-3">
@@ -139,8 +139,9 @@
 
 <style>
 .strategy-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.15rem;min-height:78px}
-.strategy-stat strong{display:block;line-height:1.08;word-break:break-word}
+.strategy-stat strong{display:block;line-height:1.08;word-break:break-word;overflow-wrap:anywhere}
 .strategy-stat small{display:block;color:var(--muted);font-weight:700;line-height:1.1}
+@@media(max-width:575.98px){.strategy-stat{min-height:auto;padding:1rem}.strategy-stat strong{font-size:1.18rem}.strategy-stat small{margin-top:.15rem}}
 </style>
 
 @section Scripts {
