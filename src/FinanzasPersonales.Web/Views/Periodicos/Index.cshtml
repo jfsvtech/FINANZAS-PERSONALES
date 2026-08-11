@@ -182,15 +182,15 @@ Cuando llegue la fecha, usa <strong>Registrar</strong>: se crea el movimiento re
         if (valorSeleccionado) select.value = valorSeleccionado;
     }
 
-    function abrirNuevo() {
+    function abrirNuevo(tipo = 'gasto', fecha = null) {
         document.getElementById('gpId').value = 0;
-        document.getElementById('gpTipo').value = 'gasto';
+        document.getElementById('gpTipo').value = tipo === 'ingreso' ? 'ingreso' : 'gasto';
         actualizarCategorias();
         document.getElementById('gpTitulo').textContent = 'Nuevo movimiento recurrente';
         document.getElementById('gpNombre').value = '';
         document.getElementById('gpMonto').value = '';
         document.getElementById('gpFrecuencia').value = 1;
-        document.getElementById('gpProximaFecha').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('gpProximaFecha').value = fecha || new Date().toISOString().slice(0, 10);
         document.getElementById('gpCuenta').value = '';
         document.getElementById('gpActivo').checked = true;
         modalP.show();
@@ -223,9 +223,15 @@ Cuando llegue la fecha, usa <strong>Registrar</strong>: se crea el movimiento re
     const periodicosCalendario = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
         Model.Select(g => new { id=g.Id,tipo=g.Tipo,nombre=g.Nombre,monto=g.MontoEstimado,cuentaId=g.CuentaId })));
     const registrarId = parseInt(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["registrar"].ToString()))) || 0;
+    const abrirNuevoCalendario = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["nuevo"].ToString()));
+    const fechaCalendario = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["fecha"].ToString()));
+    const tipoCalendario = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Context.Request.Query["tipo"].ToString()));
     if (registrarId) {
         const pendiente = periodicosCalendario.find(x => x.id === registrarId);
         if (pendiente) abrirRegistrar(pendiente);
+    }
+    if (abrirNuevoCalendario === 'true') {
+        abrirNuevo(tipoCalendario, fechaCalendario);
     }
     actualizarCategorias();
 </script>

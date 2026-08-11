@@ -34,7 +34,7 @@
                     var fecha = new DateTime(Model.Anio, Model.Mes, dia);
                     var esHoy = fecha == DateTime.Today;
                     var eventos = eventosPorDia.GetValueOrDefault(dia) ?? new();
-                    <div class="calendar-day @(esHoy ? "calendar-today" : "")">
+                    <div class="calendar-day @(esHoy ? "calendar-today" : "")" role="button" tabindex="0" data-calendar-day="@fecha.ToString("yyyy-MM-dd")">
                         <span class="calendar-number">@dia</span>
                         <div class="calendar-events">
                             @foreach (var e in eventos.Take(3))
@@ -122,9 +122,36 @@
     </div>
 </div>
 
+<div class="modal fade" id="modalDiaCalendario" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Crear evento para este dia</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="diaModalFecha" class="mb-1"></h6>
+                <p class="text-muted mb-0">Puedes crear un nuevo gasto o ingreso recurrente con esta fecha como proxima fecha programada.</p>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-outline-primary" id="diaModalIngreso" href="#"><i class="bi bi-arrow-down-circle"></i> Ingreso recurrente</a>
+                <a class="btn btn-premium" id="diaModalGasto" href="#"><i class="bi bi-arrow-up-circle"></i> Gasto recurrente</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.calendar-day:not(.calendar-empty){cursor:pointer;transition:background var(--transition),box-shadow var(--transition)}
+.calendar-day:not(.calendar-empty):hover{box-shadow:inset 0 0 0 2px rgba(124,58,237,.18);background:var(--purple-tint)}
+.calendar-event{cursor:pointer}
+</style>
+
 @section Scripts {
 <script>
 const accionModal = new bootstrap.Modal(document.getElementById('modalAccionCalendario'));
+const diaModal = new bootstrap.Modal(document.getElementById('modalDiaCalendario'));
+const periodicosBaseUrl = '@Url.Action("Index", "Periodicos")';
 document.querySelectorAll('[data-calendar-action="choose"]').forEach(link => {
     link.addEventListener('click', event => {
         event.preventDefault();
@@ -138,6 +165,24 @@ document.querySelectorAll('[data-calendar-action="choose"]').forEach(link => {
         secundaria.textContent = link.dataset.secondary || 'Ver recurrente';
         secundaria.href = link.dataset.secondaryUrl || '#';
         accionModal.show();
+    });
+});
+function abrirDiaCalendario(day){
+    const fecha = new Date(day + 'T00:00:00');
+    document.getElementById('diaModalFecha').textContent = fecha.toLocaleDateString('es-CO', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    document.getElementById('diaModalGasto').href = `${periodicosBaseUrl}?nuevo=true&fecha=${encodeURIComponent(day)}&tipo=gasto`;
+    document.getElementById('diaModalIngreso').href = `${periodicosBaseUrl}?nuevo=true&fecha=${encodeURIComponent(day)}&tipo=ingreso`;
+    diaModal.show();
+}
+document.querySelectorAll('[data-calendar-day]').forEach(day => {
+    day.addEventListener('click', event => {
+        if (event.target.closest('a,.calendar-more')) return;
+        abrirDiaCalendario(day.dataset.calendarDay);
+    });
+    day.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        abrirDiaCalendario(day.dataset.calendarDay);
     });
 });
 </script>
