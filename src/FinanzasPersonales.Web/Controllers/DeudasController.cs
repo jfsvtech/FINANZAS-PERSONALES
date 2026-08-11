@@ -66,18 +66,25 @@ public class DeudasController : BaseController
         var deudas = ConsultarDeudas(con).Where(x => x.Estado is "activa" or "vencida").ToList();
         var pagos = ConsultarPagos(con).ToLookup(x => x.DeudaId);
         foreach (var deuda in deudas) CompletarCalculos(deuda, pagos[deuda.Id]);
-        var items = deudas.Where(x => x.SaldoCapital > 0).Select(x => new EstrategiaDeudaItemVm
+        var items = deudas.Where(x => x.SaldoCapital > 0).Select(x =>
         {
-            Id = x.Id,
-            Acreedor = x.Acreedor,
-            Tipo = x.TipoTexto,
-            CapitalInicial = x.CapitalInicial,
-            CapitalPagado = x.CapitalReconocido,
-            InteresPagado = x.InteresPagado,
-            SaldoCapital = x.SaldoCapital,
-            TasaMensual = x.TasaMensualEquivalente,
-            CuotaReferencia = Math.Max(x.CuotaEstimada ?? 0, x.InteresMensualEstimado),
-            ProximaFechaPago = x.ProximaFechaPago
+            var cuota = CalcularCuotaReferenciaEstrategia(x);
+            return new EstrategiaDeudaItemVm
+            {
+                Id = x.Id,
+                Acreedor = x.Acreedor,
+                Tipo = x.TipoTexto,
+                CapitalInicial = x.CapitalInicial,
+                CapitalPagado = x.CapitalReconocido,
+                InteresPagado = x.InteresPagado,
+                SaldoCapital = x.SaldoCapital,
+                TasaMensual = x.TasaMensualEquivalente,
+                CuotaReferencia = cuota.Monto,
+                CuotaCalculadaAutomaticamente = cuota.Calculada,
+                CuotaInsuficiente = cuota.Insuficiente,
+                MesesReferencia = cuota.Meses,
+                ProximaFechaPago = x.ProximaFechaPago
+            };
         }).ToList();
 
         var avalancha = items.OrderByDescending(x => x.TasaMensual).ThenByDescending(x => x.SaldoCapital).ToList();
@@ -534,6 +541,50 @@ public class DeudasController : BaseController
     {
         efecto = (efecto ?? "").Trim().ToLowerInvariant();
         return efecto is "reducir_plazo" or "reducir_cuota" ? efecto : "no_aplica";
+    }
+
+    private static (decimal Monto, bool Calculada, bool Insuficiente, int Meses) CalcularCuotaReferenciaEstrategia(Deuda deuda)
+    {
+        var interesMensual = deuda.InteresMensualEstimado;
+        var cuotaRegistrada = deuda.CuotaEstimada.GetValueOrDefault();
+        if (cuotaRegistrada > 0)
+            return (cuotaRegistrada, false, cuotaRegistrada <= interesMensual && deuda.TasaMensualEquivalente > 0, 0);
+
+        var mesesRestantes = deuda.PlazoMeses > 0
+            ? Math.Max(1, deuda.PlazoMeses - deuda.CuotasEstimadasTranscurridas)
+            : 0;
+
+        if (deuda.SistemaPago == "solo_intereses")
+        {
+            var capitalFinal = mesesRestantes > 0 ? Math.Round(deuda.SaldoCapital / mesesRestantes, 0) : Math.Round(deuda.SaldoCapital * 0.03m, 0);
+            return (Math.Max(1, interesMensual + capitalFinal), true, capitalFinal <= 0, mesesRestantes);
+        }
+
+        if (deuda.SistemaPago == "sin_interes")
+        {
+            var cuotaCapital = mesesRestantes > 0 ? Math.Round(deuda.SaldoCapital / mesesRestantes, 0) : Math.Round(deuda.SaldoCapital * 0.03m, 0);
+            return (Math.Max(1, cuotaCapital), true, false, mesesRestantes);
+        }
+
+        if (mesesRestantes > 0)
+        {
+            var tasaMensual = deuda.TasaMensualEquivalente / 100m;
+            var cuota = CalcularCuotaFija(deuda.SaldoCapital, tasaMensual, mesesRestantes);
+            return (Math.Max(1, cuota), true, cuota <= interesMensual && deuda.TasaMensualEquivalente > 0, mesesRestantes);
+        }
+
+        var cuotaSugerida = Math.Round(interesMensual + Math.Max(1, deuda.SaldoCapital * 0.03m), 0);
+        return (Math.Max(1, cuotaSugerida), true, false, 0);
+    }
+
+    private static decimal CalcularCuotaFija(decimal capital, decimal tasaMensual, int plazoMeses)
+    {
+        if (capital <= 0 || plazoMeses <= 0) return 0;
+        if (tasaMensual <= 0) return Math.Round(capital / plazoMeses, 0);
+        var r = (double)tasaMensual;
+        var p = (double)capital;
+        var cuota = p * r / (1 - Math.Pow(1 + r, -plazoMeses));
+        return Math.Round((decimal)cuota, 0);
     }
 
     private static List<EstrategiaPagoPasoVm> SimularPlan(List<EstrategiaDeudaItemVm> origen, string metodo, decimal abonoExtra, out int meses)

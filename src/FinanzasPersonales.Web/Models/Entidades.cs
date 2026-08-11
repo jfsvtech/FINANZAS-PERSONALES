@@ -864,6 +864,9 @@ public class EstrategiaDeudaItemVm
     public decimal SaldoCapital { get; set; }
     public decimal TasaMensual { get; set; }
     public decimal CuotaReferencia { get; set; }
+    public bool CuotaCalculadaAutomaticamente { get; set; }
+    public bool CuotaInsuficiente { get; set; }
+    public int MesesReferencia { get; set; }
     public DateTime? ProximaFechaPago { get; set; }
     public int OrdenAvalancha { get; set; }
     public int OrdenBolaNieve { get; set; }
