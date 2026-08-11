@@ -150,7 +150,7 @@
     </div>
     <div class="col-12 col-lg-7">
         <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white fw-bold"><i class="bi bi-activity"></i> Flujo de caja acumulado durante el periodo</div>
+            <div class="card-header bg-white fw-bold"><i class="bi bi-activity"></i> Ingresos, salidas y flujo de caja por fecha</div>
             <div class="card-body"><canvas id="graficaFlujo" style="max-height:260px"></canvas></div>
         </div>
     </div>
@@ -364,10 +364,33 @@
         }
     });
 
-    const flujo = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.FlujoDiario.Select(x => new { fecha=x.Fecha.ToString("yyyy-MM-dd"), etiqueta=x.Etiqueta, balance=x.Balance })));
+    const flujo = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.FlujoDiario.Select(x => new { fecha=x.Fecha.ToString("yyyy-MM-dd"), etiqueta=x.Etiqueta, ingresos=x.Ingresos, gastos=x.Gastos, balance=x.Balance })));
     new Chart(document.getElementById('graficaFlujo'), {
-        type:'line', data:{labels:flujo.map(x=>x.etiqueta),datasets:[{label:'Flujo acumulado',data:flujo.map(x=>x.balance),borderColor:tc.purple,backgroundColor:'rgba(124,58,237,.15)',fill:true,tension:.3}]},
-        options:{onClick:(evt,elements)=>{if(!elements.length)return;const fecha=flujo[elements[0].index].fecha;irMov({desde:fecha,hasta:fecha,flujoCaja:'true'});},plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}
+        type:'line',
+        data:{
+            labels:flujo.map(x=>x.etiqueta),
+            datasets:[
+                {label:'Ingresos',data:flujo.map(x=>x.ingresos),borderColor:tc.success,backgroundColor:'rgba(47,191,113,.12)',tension:.3,pointRadius:3},
+                {label:'Salidas',data:flujo.map(x=>x.gastos),borderColor:tc.danger,backgroundColor:'rgba(225,91,100,.12)',tension:.3,pointRadius:3},
+                {label:'Flujo acumulado',data:flujo.map(x=>x.balance),borderColor:tc.purple,backgroundColor:'rgba(124,58,237,.12)',fill:true,tension:.3,pointRadius:3}
+            ]
+        },
+        options:{
+            interaction:{mode:'nearest',intersect:true},
+            onClick:(evt,elements)=>{
+                if(!elements.length)return;
+                const el=elements[0];
+                const fecha=flujo[el.index].fecha;
+                if(el.datasetIndex===0) irMov({desde:fecha,hasta:fecha,tipo:'ingreso'});
+                else if(el.datasetIndex===1) irMov({desde:fecha,hasta:fecha,salidasCaja:'true'});
+                else irMov({desde:fecha,hasta:fecha,flujoCaja:'true'});
+            },
+            plugins:{
+                legend:{position:'bottom'},
+                tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': $ '+ctx.parsed.y.toLocaleString('es-CO')}}
+            },
+            scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}
+        }
     });
     new Chart(document.getElementById('graficaClases'), {
         type:'doughnut',data:{labels:['Fijos','Variables y periodicos'],datasets:[{data:[@Model.GastosFijos,@Model.GastosVariables],backgroundColor:[tc.purple,tc.gold]}]},

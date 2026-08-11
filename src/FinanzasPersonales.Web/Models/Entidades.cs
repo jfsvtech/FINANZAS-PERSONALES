@@ -250,6 +250,8 @@ public class FlujoDiaVm
 {
     public DateTime Fecha { get; set; }
     public int Dia { get; set; }
+    public decimal Ingresos { get; set; }
+    public decimal Gastos { get; set; }
     public decimal Balance { get; set; }
     public string Etiqueta => Fecha == default ? $"Dia {Dia}" : Fecha.ToString("dd MMM");
 }

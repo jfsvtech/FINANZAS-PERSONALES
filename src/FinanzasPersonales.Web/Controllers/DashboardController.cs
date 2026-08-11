@@ -135,18 +135,23 @@ public class DashboardController : BaseController
             @"SELECT SUM(m.monto) FROM movimientos m JOIN categorias c ON c.id=m.categoria_id
               WHERE m.usuario_id=@usuarioId AND m.tipo='gasto' AND c.clase<>'fijo' AND m.fecha>=@desde AND m.fecha<@hasta", p) ?? 0;
         vm.FlujoDiario = con.Query<FlujoDiaVm>(
-            @"SELECT fecha::date AS Fecha, EXTRACT(DAY FROM fecha)::int AS Dia,
-                     SUM(SUM(CASE
-                         WHEN m.tipo='ingreso' AND c.tipo<>'tarjeta_credito' THEN m.monto
-                         WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN -m.monto
-                         WHEN m.tipo='pago_tarjeta' THEN -m.monto
-                         ELSE 0 END))
-                     OVER (ORDER BY fecha::date) AS Balance
-              FROM movimientos m
-              JOIN cuentas c ON c.id=m.cuenta_id
-              WHERE m.usuario_id=@usuarioId AND m.fecha>=@desde AND m.fecha<@hasta
-                AND m.tipo IN ('ingreso','gasto','pago_tarjeta')
-              GROUP BY fecha::date ORDER BY fecha::date", p).ToList();
+            @"WITH diario AS (
+                  SELECT fecha::date AS Fecha, EXTRACT(DAY FROM fecha)::int AS Dia,
+                         SUM(CASE WHEN m.tipo='ingreso' AND c.tipo<>'tarjeta_credito' THEN m.monto ELSE 0 END) AS Ingresos,
+                         SUM(CASE
+                             WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                             WHEN m.tipo='pago_tarjeta' THEN m.monto
+                             ELSE 0 END) AS Gastos
+                  FROM movimientos m
+                  JOIN cuentas c ON c.id=m.cuenta_id
+                  WHERE m.usuario_id=@usuarioId AND m.fecha>=@desde AND m.fecha<@hasta
+                    AND m.tipo IN ('ingreso','gasto','pago_tarjeta')
+                  GROUP BY fecha::date
+              )
+              SELECT Fecha, Dia, Ingresos, Gastos,
+                     SUM(Ingresos - Gastos) OVER (ORDER BY Fecha) AS Balance
+              FROM diario
+              ORDER BY Fecha", p).ToList();
 
         // Ultimos 12 meses: ingresos vs gastos
         var inicioSerie = rangoPersonalizado
