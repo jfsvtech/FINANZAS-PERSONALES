@@ -616,6 +616,8 @@ using (var scope = app.Services.CreateScope())
               END $$");
         con.Execute("ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS tipo_inversion_id INT NULL REFERENCES tipos_inversion(id)");
         con.Execute("ALTER TABLE inversiones ALTER COLUMN tipo TYPE VARCHAR(80)");
+        con.Execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS saldo_actual_informado NUMERIC(16,2) NULL");
+        con.Execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS fecha_saldo_actual DATE NULL");
         con.Execute(
             @"INSERT INTO tipos_inversion(usuario_id,nombre,color,icono)
               SELECT u.id,v.nombre,v.color,v.icono FROM usuarios u

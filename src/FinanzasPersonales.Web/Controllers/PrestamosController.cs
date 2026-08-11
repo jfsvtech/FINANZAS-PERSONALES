@@ -329,6 +329,7 @@ public class PrestamosController : BaseController
                      moneda_codigo AS MonedaCodigo,tasa_conversion AS TasaConversion,moneda_base_codigo AS MonedaBaseCodigo,
                      tasa,periodo_tasa AS PeriodoTasa,sistema_pago AS SistemaPago,plazo_meses AS PlazoMeses,
                      dia_pago AS DiaPago,proxima_fecha_pago AS ProximaFechaPago,cuota_estimada AS CuotaEstimada,
+                     saldo_actual_informado AS SaldoActualInformado,fecha_saldo_actual AS FechaSaldoActual,
                      estado
               FROM deudas WHERE usuario_id=@UsuarioId
               ORDER BY estado, proxima_fecha_pago NULLS LAST, fecha_desembolso DESC",

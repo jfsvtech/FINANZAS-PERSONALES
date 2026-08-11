@@ -92,7 +92,8 @@ public class DeudasController : BaseController
     [ValidateAntiForgeryToken]
     public IActionResult Guardar(int id, string acreedor, string tipo, DateTime fechaDesembolso,
         decimal capitalInicial, decimal tasa, string periodoTasa, string sistemaPago, int plazoMeses,
-        int? diaPago, DateTime? proximaFechaPago, decimal? cuotaEstimada, int? cuentaDesembolsoId,
+        int? diaPago, DateTime? proximaFechaPago, decimal? cuotaEstimada, decimal? saldoActualInformado,
+        DateTime? fechaSaldoActual, int? cuentaDesembolsoId,
         int? cuentaPagoId, string? notas, string monedaCodigo = "COP", decimal? tasaConversion = null)
     {
         if (string.IsNullOrWhiteSpace(acreedor) || capitalInicial <= 0 || tasa < 0)
@@ -122,16 +123,37 @@ public class DeudasController : BaseController
         ConversionMoneda conversion;
         try { conversion = Convertir(capitalInicial, monedaCodigo, fechaDesembolso, tasaConversion); }
         catch (Exception ex) { TempData["Error"] = ex.Message; return RedirectToAction(id == 0 ? "Index" : "Detalle", id == 0 ? null : new { id }); }
+        if (saldoActualInformado.HasValue)
+        {
+            if (saldoActualInformado < 0 || saldoActualInformado > capitalInicial)
+            {
+                TempData["Error"] = "El saldo actual informado debe estar entre 0 y el capital recibido.";
+                return RedirectToAction(id == 0 ? "Index" : "Detalle", id == 0 ? null : new { id });
+            }
+            fechaSaldoActual ??= DateTime.Today;
+        }
+        else
+        {
+            fechaSaldoActual = null;
+        }
+        ConversionMoneda? conversionSaldoActual = null;
+        if (saldoActualInformado.HasValue)
+        {
+            var fechaSaldo = fechaSaldoActual ?? DateTime.Today;
+            try { conversionSaldoActual = Convertir(saldoActualInformado.Value, monedaCodigo, fechaSaldo, tasaConversion); }
+            catch (Exception ex) { TempData["Error"] = ex.Message; return RedirectToAction(id == 0 ? "Index" : "Detalle", id == 0 ? null : new { id }); }
+        }
 
         if (id == 0)
         {
             var nuevoId = con.ExecuteScalar<int>(
                 @"INSERT INTO deudas(usuario_id,acreedor,tipo,fecha_desembolso,capital_inicial,capital_original,
                          moneda_codigo,tasa_conversion,moneda_base_codigo,tasa,periodo_tasa,sistema_pago,plazo_meses,
-                         dia_pago,proxima_fecha_pago,cuota_estimada,cuenta_desembolso_id,cuenta_pago_id,notas)
+                         dia_pago,proxima_fecha_pago,cuota_estimada,saldo_actual_informado,fecha_saldo_actual,
+                         cuenta_desembolso_id,cuenta_pago_id,notas)
                   VALUES(@UsuarioId,@acreedor,@tipo,@fechaDesembolso,@capitalBase,@capitalOriginal,@monedaCodigo,
                          @tasaConv,@monedaBase,@tasa,@periodoTasa,@sistemaPago,@plazoMeses,@diaPago,@proximaFechaPago,
-                         @cuotaEstimada,@cuentaDesembolsoId,@cuentaPagoId,@notas)
+                         @cuotaEstimada,@saldoActualBase,@fechaSaldoActual,@cuentaDesembolsoId,@cuentaPagoId,@notas)
                   RETURNING id",
                 new
                 {
@@ -151,6 +173,8 @@ public class DeudasController : BaseController
                     diaPago,
                     proximaFechaPago,
                     cuotaEstimada,
+                    saldoActualBase = conversionSaldoActual?.MontoBase,
+                    fechaSaldoActual,
                     cuentaDesembolsoId,
                     cuentaPagoId,
                     notas
@@ -166,6 +190,7 @@ public class DeudasController : BaseController
                      tasa_conversion=@tasaConv,moneda_base_codigo=@monedaBase,tasa=@tasa,periodo_tasa=@periodoTasa,
                      sistema_pago=@sistemaPago,plazo_meses=@plazoMeses,dia_pago=@diaPago,
                      proxima_fecha_pago=@proximaFechaPago,cuota_estimada=@cuotaEstimada,
+                     saldo_actual_informado=@saldoActualBase,fecha_saldo_actual=@fechaSaldoActual,
                      cuenta_desembolso_id=@cuentaDesembolsoId,cuenta_pago_id=@cuentaPagoId,notas=@notas
               WHERE id=@id AND usuario_id=@UsuarioId",
             new
@@ -187,6 +212,8 @@ public class DeudasController : BaseController
                 diaPago,
                 proximaFechaPago,
                 cuotaEstimada,
+                saldoActualBase = conversionSaldoActual?.MontoBase,
+                fechaSaldoActual,
                 cuentaDesembolsoId,
                 cuentaPagoId,
                 notas
@@ -305,6 +332,7 @@ public class DeudasController : BaseController
                            d.moneda_codigo AS MonedaCodigo,d.tasa_conversion AS TasaConversion,d.moneda_base_codigo AS MonedaBaseCodigo,
                            d.tasa,d.periodo_tasa AS PeriodoTasa,d.sistema_pago AS SistemaPago,d.plazo_meses AS PlazoMeses,
                            d.dia_pago AS DiaPago,d.proxima_fecha_pago AS ProximaFechaPago,d.cuota_estimada AS CuotaEstimada,
+                           d.saldo_actual_informado AS SaldoActualInformado,d.fecha_saldo_actual AS FechaSaldoActual,
                            d.cuenta_desembolso_id AS CuentaDesembolsoId,d.cuenta_pago_id AS CuentaPagoId,d.notas,d.estado,
                            cd.nombre AS CuentaDesembolsoNombre, cp.nombre AS CuentaPagoNombre
                     FROM deudas d

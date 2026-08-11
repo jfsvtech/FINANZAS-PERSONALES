@@ -487,6 +487,8 @@ public class Deuda
     public int? DiaPago { get; set; }
     public DateTime? ProximaFechaPago { get; set; }
     public decimal? CuotaEstimada { get; set; }
+    public decimal? SaldoActualInformado { get; set; }
+    public DateTime? FechaSaldoActual { get; set; }
     public int? CuentaDesembolsoId { get; set; }
     public int? CuentaPagoId { get; set; }
     public string? Notas { get; set; }
@@ -494,15 +496,24 @@ public class Deuda
     public string? CuentaDesembolsoNombre { get; set; }
     public string? CuentaPagoNombre { get; set; }
     public decimal CapitalPagado { get; set; }
+    public decimal CapitalPagadoPosteriorSaldoInformado { get; set; }
     public decimal CapitalPagadoEstimado { get; set; }
     public int CuotasEstimadasTranscurridas { get; set; }
     public decimal InteresPagado { get; set; }
     public decimal CostosPagados { get; set; }
     public decimal TotalPagado { get; set; }
-    public decimal CapitalReconocido => Math.Max(CapitalPagado, CapitalPagadoEstimado);
+    public decimal SaldoCapitalInformadoActualizado => SaldoActualInformado.HasValue
+        ? Math.Max(0, SaldoActualInformado.Value - CapitalPagadoPosteriorSaldoInformado)
+        : 0;
+    public decimal CapitalReconocido => SaldoActualInformado.HasValue
+        ? Math.Max(0, CapitalInicial - SaldoCapitalInformadoActualizado)
+        : Math.Max(CapitalPagado, CapitalPagadoEstimado);
     public decimal SaldoCapitalRealPorPagos => Math.Max(0, CapitalInicial - CapitalPagado);
     public decimal SaldoCapital => Math.Max(0, CapitalInicial - CapitalReconocido);
-    public bool UsaAmortizacionEstimada => CapitalPagadoEstimado > CapitalPagado;
+    public bool UsaSaldoActualInformado => SaldoActualInformado.HasValue;
+    public bool UsaAmortizacionEstimada => !UsaSaldoActualInformado && CapitalPagadoEstimado > CapitalPagado;
+    public bool RequiereDatosParaAmortizar => !UsaSaldoActualInformado && !UsaAmortizacionEstimada &&
+        FechaDesembolso.Date < DateTime.Today && SistemaPago is "cuota_fija" or "sin_interes";
     public decimal Avance => CapitalInicial > 0 ? Math.Round(CapitalReconocido * 100 / CapitalInicial, 1) : 0;
     public decimal TasaMensualEquivalente => PeriodoTasa == "anual"
         ? (decimal)(Math.Pow(1d + (double)Tasa / 100d, 1d / 12d) - 1d) * 100m
@@ -1307,10 +1318,14 @@ public static class CalculoDeudas
 {
     public static void CompletarCalculos(Deuda deuda, IEnumerable<DeudaPago> pagos)
     {
-        deuda.CapitalPagado = pagos.Sum(x => x.Capital);
-        deuda.InteresPagado = pagos.Sum(x => x.Interes);
-        deuda.CostosPagados = pagos.Sum(x => x.Costos);
-        deuda.TotalPagado = pagos.Sum(x => x.MontoTotal);
+        var listaPagos = pagos.ToList();
+        deuda.CapitalPagado = listaPagos.Sum(x => x.Capital);
+        deuda.CapitalPagadoPosteriorSaldoInformado = deuda.FechaSaldoActual.HasValue
+            ? listaPagos.Where(x => x.Fecha.Date > deuda.FechaSaldoActual.Value.Date).Sum(x => x.Capital)
+            : 0;
+        deuda.InteresPagado = listaPagos.Sum(x => x.Interes);
+        deuda.CostosPagados = listaPagos.Sum(x => x.Costos);
+        deuda.TotalPagado = listaPagos.Sum(x => x.MontoTotal);
         CompletarAmortizacionEstimada(deuda);
     }
 
@@ -1318,6 +1333,8 @@ public static class CalculoDeudas
     {
         deuda.CapitalPagadoEstimado = 0;
         deuda.CuotasEstimadasTranscurridas = 0;
+        if (deuda.SaldoActualInformado.HasValue)
+            return;
         if (deuda.Estado == "pagada" || deuda.CapitalInicial <= 0 || deuda.FechaDesembolso.Date >= DateTime.Today)
             return;
         if (deuda.SistemaPago is "solo_intereses" or "abonos_libres")

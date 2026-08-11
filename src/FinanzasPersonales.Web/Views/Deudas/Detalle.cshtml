@@ -42,6 +42,27 @@
         Puedes registrar pagos reales para reemplazar progresivamente esta estimacion.
     </div>
 }
+else if (d.UsaSaldoActualInformado)
+{
+    var saldoInformado = d.SaldoActualInformado ?? 0;
+    <div class="alert alert-success border-0 shadow-sm">
+        <i class="bi bi-bank"></i>
+        Saldo basado en extracto bancario: <strong>@M(saldoInformado, Model.MonedaBase)</strong>
+        con fecha @(d.FechaSaldoActual?.ToString("dd MMM yyyy") ?? "sin fecha").
+        @if (d.CapitalPagadoPosteriorSaldoInformado > 0)
+        {
+            <span> Despues de ese corte se han descontado <strong>@M(d.CapitalPagadoPosteriorSaldoInformado, Model.MonedaBase)</strong> en abonos a capital.</span>
+        }
+    </div>
+}
+else if (d.RequiereDatosParaAmortizar)
+{
+    <div class="alert alert-warning border-0 shadow-sm">
+        <i class="bi bi-exclamation-triangle"></i>
+        Esta deuda es antigua, pero no tiene datos suficientes para recalcular saldo.
+        Agrega <strong>cuota estimada y plazo</strong>, o registra el <strong>saldo actual segun banco</strong> desde Editar.
+    </div>
+}
 
 <div class="row g-3 mb-3">
     <div class="col-12 col-lg-4">
@@ -167,6 +188,14 @@
                     <div class="col-6 col-md-3"><label class="form-label">Cuota estimada</label><input type="number" name="cuotaEstimada" class="form-control" value="@(d.CuotaEstimada?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))" /></div>
                     <div class="col-6 col-md-3"><label class="form-label">Cuenta recibio</label><select name="cuentaDesembolsoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){if(c.Id==d.CuentaDesembolsoId){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select></div>
                     <div class="col-6 col-md-3"><label class="form-label">Cuenta pago</label><select name="cuentaPagoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){if(c.Id==d.CuentaPagoId){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select></div>
+                </div>
+                <div class="alert alert-primary-subtle border border-primary-subtle mb-3">
+                    <div class="fw-bold mb-2"><i class="bi bi-bank"></i> Saldo actual segun banco</div>
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6"><label class="form-label">Saldo actual informado</label><input name="saldoActualInformado" class="form-control" value="@(d.SaldoActualInformado?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))" min="0" step=".01" /></div>
+                        <div class="col-12 col-md-6"><label class="form-label">Fecha del saldo</label><input type="date" name="fechaSaldoActual" class="form-control" value="@((d.FechaSaldoActual ?? DateTime.Today).ToString("yyyy-MM-dd"))" /></div>
+                    </div>
+                    <div class="form-text">Si el banco te da el saldo pendiente actual, ingresalo aqui. Tiene prioridad sobre la estimacion por cuota/plazo.</div>
                 </div>
                 <label class="form-label">Notas</label><textarea name="notas" class="form-control" rows="2">@d.Notas</textarea>
             </div>

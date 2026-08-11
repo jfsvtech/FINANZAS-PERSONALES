@@ -122,7 +122,8 @@ public class InicioController : BaseController
             @"SELECT d.id,d.usuario_id AS UsuarioId,d.acreedor,d.fecha_desembolso AS FechaDesembolso,
                      d.capital_inicial AS CapitalInicial,d.tasa,d.periodo_tasa AS PeriodoTasa,
                      d.sistema_pago AS SistemaPago,d.plazo_meses AS PlazoMeses,d.dia_pago AS DiaPago,
-                     d.proxima_fecha_pago AS ProximaFechaPago,d.cuota_estimada AS CuotaEstimada,d.estado
+                     d.proxima_fecha_pago AS ProximaFechaPago,d.cuota_estimada AS CuotaEstimada,
+                     d.saldo_actual_informado AS SaldoActualInformado,d.fecha_saldo_actual AS FechaSaldoActual,d.estado
               FROM deudas d
               WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')",
             new { usuarioId = UsuarioId }).ToList();

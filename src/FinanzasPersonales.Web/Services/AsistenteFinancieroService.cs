@@ -715,7 +715,8 @@ public class AsistenteFinancieroService
             @"SELECT id,usuario_id AS UsuarioId,acreedor,tipo,fecha_desembolso AS FechaDesembolso,
                      capital_inicial AS CapitalInicial,tasa,periodo_tasa AS PeriodoTasa,
                      sistema_pago AS SistemaPago,plazo_meses AS PlazoMeses,dia_pago AS DiaPago,
-                     cuota_estimada AS CuotaEstimada,proxima_fecha_pago AS ProximaFechaPago,estado
+                     cuota_estimada AS CuotaEstimada,saldo_actual_informado AS SaldoActualInformado,
+                     fecha_saldo_actual AS FechaSaldoActual,proxima_fecha_pago AS ProximaFechaPago,estado
               FROM deudas
               WHERE usuario_id=@usuarioId AND estado IN ('activa','vencida')",
             new { usuarioId }).ToList();

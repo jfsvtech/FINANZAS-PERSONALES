@@ -78,6 +78,14 @@
                         {
                             <small class="d-block text-primary"><i class="bi bi-calculator"></i> estimado por @deuda.CuotasEstimadasTranscurridas cuota(s)</small>
                         }
+                        @if (deuda.UsaSaldoActualInformado)
+                        {
+                            <small class="d-block text-success"><i class="bi bi-bank"></i> saldo banco @(deuda.FechaSaldoActual?.ToString("dd MMM"))</small>
+                        }
+                        @if (deuda.RequiereDatosParaAmortizar)
+                        {
+                            <small class="d-block text-warning"><i class="bi bi-exclamation-triangle"></i> falta cuota/plazo o saldo banco</small>
+                        }
                     </td>
                     <td class="d-none d-md-table-cell">@(deuda.ProximaFechaPago?.ToString("dd MMM yyyy") ?? "Sin fecha")</td>
                     <td>
@@ -124,6 +132,14 @@
                     <div class="col-6 col-md-3"><label class="form-label">Cuota estimada</label><input type="number" name="cuotaEstimada" class="form-control" min="0" step=".01" /></div>
                     <div class="col-6 col-md-3"><label class="form-label">Cuenta recibio</label><select name="cuentaDesembolsoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){<option value="@c.Id">@c.Nombre</option>}</select></div>
                     <div class="col-6 col-md-3"><label class="form-label">Cuenta pago</label><select name="cuentaPagoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){<option value="@c.Id">@c.Nombre</option>}</select></div>
+                </div>
+                <div class="alert alert-primary-subtle border border-primary-subtle mb-3">
+                    <div class="fw-bold mb-2"><i class="bi bi-bank"></i> Si la deuda ya viene de meses anteriores</div>
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6"><label class="form-label">Saldo actual segun banco</label><input name="saldoActualInformado" class="form-control" min="0" step=".01" placeholder="Ej: saldo del extracto hoy" /></div>
+                        <div class="col-12 col-md-6"><label class="form-label">Fecha del saldo</label><input type="date" name="fechaSaldoActual" class="form-control" value="@DateTime.Today.ToString("yyyy-MM-dd")" /></div>
+                    </div>
+                    <div class="form-text">Para creditos bancarios reales, este es el dato mas confiable. Si no lo tienes, ingresa plazo y cuota para que el sistema estime la amortizacion.</div>
                 </div>
                 <label class="form-label">Notas</label><textarea name="notas" class="form-control" rows="2" maxlength="500"></textarea>
                 <div class="form-text mt-2">Si la deuda viene de meses anteriores y tiene cuota fija o sin intereses, el sistema estima automaticamente el saldo actual segun cuotas transcurridas. Puedes ajustar con pagos reales del extracto.</div>
