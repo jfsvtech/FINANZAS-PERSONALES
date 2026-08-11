@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Dapper;
 using FinanzasPersonales.Web.Data;
 using FinanzasPersonales.Web.Middleware;
+using FinanzasPersonales.Web.Models;
 using FinanzasPersonales.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
@@ -21,6 +22,7 @@ builder.Logging.AddDebug();
 builder.Services.AddControllersWithViews(opt =>
 {
     opt.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+    opt.ModelBinderProviders.Insert(0, new FlexibleDecimalModelBinderProvider());
 });
 builder.Services.AddAntiforgery(opt =>
 {
