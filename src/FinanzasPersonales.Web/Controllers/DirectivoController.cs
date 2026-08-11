@@ -40,6 +40,25 @@ public class DirectivoController : BaseController
                              WHEN m.tipo='pago_tarjeta' THEN -m.monto ELSE 0 END)
               FROM movimientos m LEFT JOIN cuentas c ON c.id=m.cuenta_id WHERE m.usuario_id=@usuarioId",
             new { usuarioId = UsuarioId }) ?? 0;
+        if (vm.DeudaTarjetas < 0) vm.DeudaTarjetas = 0;
+        var deudas = con.Query<Deuda>(
+            @"SELECT d.id,d.usuario_id AS UsuarioId,d.acreedor,d.tipo,d.fecha_desembolso AS FechaDesembolso,
+                     d.capital_inicial AS CapitalInicial,d.tasa,d.periodo_tasa AS PeriodoTasa,d.estado
+              FROM deudas d WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')",
+            new { usuarioId = UsuarioId }).ToList();
+        var pagosDeudas = con.Query<DeudaPago>(
+            @"SELECT deuda_id AS DeudaId, capital, interes, costos, monto_total AS MontoTotal
+              FROM deuda_pagos WHERE usuario_id=@usuarioId",
+            new { usuarioId = UsuarioId }).ToLookup(x => x.DeudaId);
+        foreach (var deuda in deudas)
+        {
+            deuda.CapitalPagado = pagosDeudas[deuda.Id].Sum(x => x.Capital);
+            deuda.InteresPagado = pagosDeudas[deuda.Id].Sum(x => x.Interes);
+            deuda.CostosPagados = pagosDeudas[deuda.Id].Sum(x => x.Costos);
+            deuda.TotalPagado = pagosDeudas[deuda.Id].Sum(x => x.MontoTotal);
+        }
+        vm.DeudasPorPagar = deudas.Sum(x => x.SaldoCapital);
+        vm.InteresDeudasMensual = deudas.Sum(x => x.InteresMensualEstimado);
         vm.MetasAhorradas = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM aportes_meta WHERE usuario_id=@usuarioId", new { usuarioId = UsuarioId }) ?? 0;
         vm.ValorInversiones = con.ExecuteScalar<decimal?>(
             @"SELECT SUM(GREATEST(0,
@@ -77,6 +96,11 @@ public class DirectivoController : BaseController
             new() { Nombre="Prestamos por cobrar", Total=vm.SaldoPrestamos, Color="#D4AF37" },
             new() { Nombre="Inversiones", Total=vm.ValorInversiones, Color="#A78BFA" },
             new() { Nombre="Metas registradas", Total=vm.MetasAhorradas, Color="#A78BFA" }
+        };
+        vm.Pasivos = new()
+        {
+            new() { Nombre="Tarjetas de credito", Total=vm.DeudaTarjetas, Color="#E15B64" },
+            new() { Nombre="Deudas por pagar", Total=vm.DeudasPorPagar, Color="#FB8C00" }
         };
         return View(vm);
     }

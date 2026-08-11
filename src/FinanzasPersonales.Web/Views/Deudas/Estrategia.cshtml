@@ -1,0 +1,88 @@
+@model EstrategiaDeudasVm
+@{
+    ViewBag.Titulo = "Estrategia avanzada de deudas";
+}
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <span class="page-eyebrow">Plan de salida</span>
+        <h3 class="mb-1"><i class="bi bi-signpost-split text-warning"></i> Estrategia avanzada de deudas</h3>
+        <p class="text-muted mb-0">Compara metodo avalancha, bola de nieve y el impacto de un abono extra mensual.</p>
+    </div>
+    <a class="btn btn-outline-primary" asp-action="Index"><i class="bi bi-building-lock"></i> Ver deudas</a>
+</div>
+
+<form method="get" class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label">Metodo</label>
+                <select name="metodo" class="form-select">
+                    <option value="avalancha" selected="@(Model.Metodo == "avalancha")">Avalancha: mayor tasa primero</option>
+                    <option value="bola_nieve" selected="@(Model.Metodo == "bola_nieve")">Bola de nieve: menor saldo primero</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Abono extra mensual</label>
+                <input name="abonoExtraMensual" class="form-control" type="number" min="0" step="1" value="@Model.AbonoExtraMensual.ToString("0")" />
+            </div>
+            <div class="col-12 col-md-4">
+                <button class="btn btn-primary w-100"><i class="bi bi-calculator"></i> Simular estrategia</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="row g-2 mb-3 text-center">
+    <div class="col-6 col-md-3"><div class="mini-stat mini-stat-danger"><span>Saldo total</span><strong>@Model.SaldoTotal.ToString("C0")</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat"><span>Cuotas base</span><strong>@Model.CuotasBase.ToString("C0")</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat"><span>Interes mensual</span><strong>@Model.InteresMensualTotal.ToString("C0")</strong></div></div>
+    <div class="col-6 col-md-3"><div class="mini-stat mini-stat-success"><span>Libre de deudas</span><strong>@(Model.FechaLibreDeDeudas?.ToString("MMM yyyy") ?? "Sin deudas")</strong><small>@Model.MesesEstimados meses</small></div></div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold"><i class="bi bi-list-ol"></i> Orden recomendado</div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light"><tr><th>Deuda</th><th class="text-end">Saldo</th><th class="text-end">Tasa</th><th class="text-end">Orden</th></tr></thead>
+                    <tbody>
+                    @foreach (var d in Model.Deudas.OrderBy(x => Model.Metodo == "bola_nieve" ? x.OrdenBolaNieve : x.OrdenAvalancha))
+                    {
+                        <tr>
+                            <td><strong>@d.Acreedor</strong><small class="d-block text-muted">@d.Tipo</small></td>
+                            <td class="text-end fw-bold">@d.SaldoCapital.ToString("C0")</td>
+                            <td class="text-end">@d.TasaMensual.ToString("0.##")%</td>
+                            <td class="text-end"><span class="badge text-bg-primary">#@(Model.Metodo == "bola_nieve" ? d.OrdenBolaNieve : d.OrdenAvalancha)</span></td>
+                        </tr>
+                    }
+                    @if (!Model.Deudas.Any())
+                    {
+                        <tr><td colspan="4" class="text-center text-muted py-4">No tienes deudas activas.</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold"><i class="bi bi-graph-down-arrow"></i> Proyeccion del plan</div>
+            <div class="card-body"><canvas id="graficaPlanDeudas" style="max-height:320px"></canvas></div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const plan=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Plan.Select(x=>new{mes=x.Mes,objetivo=x.Objetivo,saldo=x.SaldoRestante})));
+if(window.Chart){
+ new Chart(document.getElementById('graficaPlanDeudas'),{
+  type:'line',
+  data:{labels:plan.map(x=>'Mes '+x.mes),datasets:[{label:'Saldo proyectado',data:plan.map(x=>x.saldo),borderColor:'#7C3AED',backgroundColor:'rgba(124,58,237,.12)',fill:true,tension:.35}]},
+  options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{afterLabel:ctx=>'Objetivo: '+(plan[ctx.dataIndex]?.objetivo||'')}}},scales:{y:{ticks:{callback:v=>'$ '+v.toLocaleString('es-CO')}}}}
+ });
+}
+</script>
+}

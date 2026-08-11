@@ -25,12 +25,14 @@ public class AccesoController : Controller
     private readonly Db _db;
     private readonly EmailService _email;
     private readonly TraduccionService _traduccion;
+    private readonly AuditoriaService _auditoria;
 
-    public AccesoController(Db db, EmailService email, TraduccionService traduccion)
+    public AccesoController(Db db, EmailService email, TraduccionService traduccion, AuditoriaService auditoria)
     {
         _db = db;
         _email = email;
         _traduccion = traduccion;
+        _auditoria = auditoria;
     }
 
     [AllowAnonymous]
@@ -58,13 +60,15 @@ public class AccesoController : Controller
                      permiso_gastos AS PermisoGastos, permiso_prestamos AS PermisoPrestamos,
                      permiso_inversiones AS PermisoInversiones, permiso_directivo AS PermisoDirectivo,
                      permiso_asistente AS PermisoAsistente, permiso_calendario AS PermisoCalendario,
-                     idioma, moneda_codigo AS MonedaCodigo, zona_horaria AS ZonaHoraria
+                     idioma, moneda_codigo AS MonedaCodigo, zona_horaria AS ZonaHoraria,
+                     two_factor_enabled AS TwoFactorEnabled, onboarding_completado AS OnboardingCompletado
               FROM usuarios WHERE LOWER(email) = LOWER(@email)",
             new { email });
 
         if (u == null)
         {
             await Task.Delay(RandomNumberGenerator.GetInt32(180, 420));
+            _auditoria.Login(null, email, false, "usuario_no_existe");
             ViewBag.Error = "Correo o contrasena incorrectos.";
             return View();
         }
@@ -77,12 +81,14 @@ public class AccesoController : Controller
 
         if (!u.Activo)
         {
+            _auditoria.Login(u.Id, email, false, "usuario_inactivo");
             ViewBag.Error = "La cuenta esta inactiva. Contacta al administrador.";
             return View();
         }
 
         if (!u.EmailConfirmado)
         {
+            _auditoria.Login(u.Id, email, false, "email_no_confirmado");
             ViewBag.Error = "Debes verificar tu correo electronico antes de ingresar.";
             return View();
         }
@@ -90,41 +96,72 @@ public class AccesoController : Controller
         if (!BCrypt.Net.BCrypt.Verify(clave ?? "", u.ClaveHash))
         {
             RegistrarFallo(con, u.Id, u.IntentosFallidos);
+            _auditoria.Login(u.Id, email, false, "clave_incorrecta");
             ViewBag.Error = "Correo o contrasena incorrectos.";
             return View();
         }
 
-        con.Execute(
-            @"UPDATE usuarios SET intentos_fallidos=0, bloqueado_hasta=NULL, ultimo_acceso=NOW()
-              WHERE id=@id", new { u.Id });
-        var recordatorios = ObtenerPreferenciasRecordatorios(con, u.Id);
-
-        var claims = new List<Claim>
+        if (u.TwoFactorEnabled)
         {
-            new(ClaimTypes.NameIdentifier, u.Id.ToString()),
-            new(ClaimTypes.Name, u.NombreCompleto),
-            new(ClaimTypes.Email, u.Email),
-            new("EsAdmin", u.EsAdmin ? "true" : "false"),
-            new("PermisoGastos", u.EsAdmin || u.PermisoGastos ? "true" : "false"),
-            new("PermisoPrestamos", u.EsAdmin || u.PermisoPrestamos ? "true" : "false"),
-            new("PermisoInversiones", u.EsAdmin || u.PermisoInversiones ? "true" : "false"),
-            new("PermisoDirectivo", u.EsAdmin || u.PermisoDirectivo ? "true" : "false"),
-            new("PermisoAsistente", u.EsAdmin || u.PermisoAsistente ? "true" : "false"),
-            new("PermisoCalendario", u.EsAdmin || u.PermisoCalendario ? "true" : "false"),
-            new("Idioma", PreferenciasUsuarioService.NormalizarIdioma(u.Idioma)),
-            new("MonedaCodigo", PreferenciasUsuarioService.NormalizarMoneda(u.MonedaCodigo)),
-            new("RecordatoriosEmailActivos", recordatorios.Activos ? "true" : "false"),
-            new("RecordatoriosEmailDiasAntes", recordatorios.DiasAntes.ToString())
-        };
-        var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        await HttpContext.SignInAsync(new ClaimsPrincipal(identidad),
-            new AuthenticationProperties
-            {
-                IsPersistent = recordarme,
-                IssuedUtc = DateTimeOffset.UtcNow,
-                ExpiresUtc = DateTimeOffset.UtcNow.Add(recordarme ? TimeSpan.FromDays(30) : TimeSpan.FromHours(8))
-            });
+            await EnviarCodigo2Fa(con, u);
+            _auditoria.Login(u.Id, email, false, "pendiente_2fa");
+            TempData["Ok"] = "Te enviamos un codigo de verificacion a tu correo.";
+            return RedirectToAction("Verificar2Fa", new { email = u.Email, recordarme });
+        }
 
+        await FirmarUsuarioAsync(con, u, recordarme);
+        _auditoria.Login(u.Id, email, true, "login_ok");
+
+        return RedirectToAction("Index", "Inicio");
+    }
+
+    [AllowAnonymous]
+    [HttpGet]
+    public IActionResult Verificar2Fa(string email, bool recordarme = false)
+    {
+        ViewBag.Email = email;
+        ViewBag.Recordarme = recordarme;
+        return View();
+    }
+
+    [AllowAnonymous]
+    [HttpPost]
+    [EnableRateLimiting("auth")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Verificar2Fa(string email, string codigo, bool recordarme = false)
+    {
+        email = NormalizarEmail(email);
+        codigo = (codigo ?? "").Trim();
+        using var con = _db.Abrir();
+        var u = con.QueryFirstOrDefault<Usuario>(
+            @"SELECT id,nombre_usuario AS NombreUsuario,email,nombre_completo AS NombreCompleto,clave_hash AS ClaveHash,
+                     es_admin AS EsAdmin,activo,email_confirmado AS EmailConfirmado,
+                     permiso_gastos AS PermisoGastos,permiso_prestamos AS PermisoPrestamos,permiso_inversiones AS PermisoInversiones,
+                     permiso_directivo AS PermisoDirectivo,permiso_asistente AS PermisoAsistente,permiso_calendario AS PermisoCalendario,
+                     idioma,moneda_codigo AS MonedaCodigo,zona_horaria AS ZonaHoraria,
+                     two_factor_enabled AS TwoFactorEnabled,onboarding_completado AS OnboardingCompletado
+              FROM usuarios WHERE LOWER(email)=LOWER(@email)", new { email });
+        if (u == null || !u.Activo)
+        {
+            ViewBag.Error = "Codigo invalido o vencido.";
+            return View();
+        }
+        var hash = HashToken(codigo);
+        var token = con.QueryFirstOrDefault<(int Id, DateTime ExpiraEn)>(
+            @"SELECT id AS Id, expira_en AS ExpiraEn FROM usuario_codigos_2fa
+              WHERE usuario_id=@usuarioId AND codigo_hash=@hash AND usado_en IS NULL AND expira_en>NOW()
+              ORDER BY creado_en DESC LIMIT 1", new { usuarioId = u.Id, hash });
+        if (token.Id == 0)
+        {
+            _auditoria.Login(u.Id, email, false, "2fa_invalido");
+            ViewBag.Email = email;
+            ViewBag.Recordarme = recordarme;
+            ViewBag.Error = "Codigo invalido o vencido.";
+            return View();
+        }
+        con.Execute("UPDATE usuario_codigos_2fa SET usado_en=NOW() WHERE id=@id", new { token.Id });
+        await FirmarUsuarioAsync(con, u, recordarme);
+        _auditoria.Login(u.Id, email, true, "login_2fa_ok");
         return RedirectToAction("Index", "Inicio");
     }
 
@@ -311,6 +348,41 @@ public class AccesoController : Controller
         return RedirectToAction("Index", "Inicio");
     }
 
+    [Authorize]
+    public IActionResult Seguridad()
+    {
+        var usuarioId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        using var con = _db.Abrir();
+        var vm = new SeguridadUsuarioVm
+        {
+            TwoFactorEnabled = con.ExecuteScalar<bool>("SELECT two_factor_enabled FROM usuarios WHERE id=@usuarioId", new { usuarioId }),
+            UltimoAcceso = con.ExecuteScalar<DateTime?>("SELECT ultimo_acceso FROM usuarios WHERE id=@usuarioId", new { usuarioId }),
+            LoginEventos = con.Query<LoginEvento>(
+                @"SELECT id,usuario_id AS UsuarioId,email,exitoso,motivo,ip,user_agent AS UserAgent,creado_en AS CreadoEn
+                  FROM login_eventos WHERE usuario_id=@usuarioId ORDER BY creado_en DESC LIMIT 15", new { usuarioId }).ToList(),
+            Auditoria = con.Query<AuditoriaEvento>(
+                @"SELECT id,usuario_id AS UsuarioId,actor_usuario_id AS ActorUsuarioId,modulo,accion,entidad,entidad_id AS EntidadId,
+                         resumen,ip,user_agent AS UserAgent,creado_en AS CreadoEn
+                  FROM auditoria_eventos WHERE usuario_id=@usuarioId OR actor_usuario_id=@usuarioId ORDER BY creado_en DESC LIMIT 20",
+                new { usuarioId }).ToList()
+        };
+        return View(vm);
+    }
+
+    [Authorize]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult Cambiar2Fa(bool enabled = false)
+    {
+        var usuarioId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        using var con = _db.Abrir();
+        con.Execute("UPDATE usuarios SET two_factor_enabled=@enabled WHERE id=@usuarioId", new { usuarioId, enabled });
+        _auditoria.Registrar(usuarioId, usuarioId, "Seguridad", enabled ? "Activar 2FA" : "Desactivar 2FA", "usuarios", usuarioId,
+            enabled ? "Autenticacion de dos factores activada." : "Autenticacion de dos factores desactivada.");
+        TempData["Ok"] = enabled ? "2FA activado. En el proximo inicio se pedira codigo por correo." : "2FA desactivado.";
+        return RedirectToAction("Seguridad");
+    }
+
     private static (bool Activos, int DiasAntes) ObtenerPreferenciasRecordatorios(System.Data.IDbConnection con, int usuarioId)
     {
         var pref = con.QueryFirstOrDefault<(bool? Activos, int? DiasAntes)>(
@@ -319,6 +391,54 @@ public class AccesoController : Controller
               FROM configuraciones_usuario WHERE usuario_id=@usuarioId",
             new { usuarioId });
         return (pref.Activos ?? true, Math.Clamp(pref.DiasAntes ?? 3, 0, 60));
+    }
+
+    private async Task FirmarUsuarioAsync(System.Data.IDbConnection con, Usuario u, bool recordarme)
+    {
+        con.Execute(
+            @"UPDATE usuarios SET intentos_fallidos=0, bloqueado_hasta=NULL, ultimo_acceso=NOW()
+              WHERE id=@id", new { u.Id });
+        var recordatorios = ObtenerPreferenciasRecordatorios(con, u.Id);
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, u.Id.ToString()),
+            new(ClaimTypes.Name, u.NombreCompleto),
+            new(ClaimTypes.Email, u.Email),
+            new("EsAdmin", u.EsAdmin ? "true" : "false"),
+            new("PermisoGastos", u.EsAdmin || u.PermisoGastos ? "true" : "false"),
+            new("PermisoPrestamos", u.EsAdmin || u.PermisoPrestamos ? "true" : "false"),
+            new("PermisoInversiones", u.EsAdmin || u.PermisoInversiones ? "true" : "false"),
+            new("PermisoDirectivo", u.EsAdmin || u.PermisoDirectivo ? "true" : "false"),
+            new("PermisoAsistente", u.EsAdmin || u.PermisoAsistente ? "true" : "false"),
+            new("PermisoCalendario", u.EsAdmin || u.PermisoCalendario ? "true" : "false"),
+            new("Idioma", PreferenciasUsuarioService.NormalizarIdioma(u.Idioma)),
+            new("MonedaCodigo", PreferenciasUsuarioService.NormalizarMoneda(u.MonedaCodigo)),
+            new("RecordatoriosEmailActivos", recordatorios.Activos ? "true" : "false"),
+            new("RecordatoriosEmailDiasAntes", recordatorios.DiasAntes.ToString()),
+            new("OnboardingCompletado", u.EsAdmin || u.OnboardingCompletado ? "true" : "false")
+        };
+        var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(new ClaimsPrincipal(identidad), new AuthenticationProperties
+        {
+            IsPersistent = recordarme,
+            IssuedUtc = DateTimeOffset.UtcNow,
+            ExpiresUtc = DateTimeOffset.UtcNow.Add(recordarme ? TimeSpan.FromDays(30) : TimeSpan.FromHours(8))
+        });
+    }
+
+    private async Task EnviarCodigo2Fa(System.Data.IDbConnection con, Usuario u)
+    {
+        var codigo = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
+        con.Execute(
+            @"UPDATE usuario_codigos_2fa SET usado_en=NOW() WHERE usuario_id=@usuarioId AND usado_en IS NULL;
+              INSERT INTO usuario_codigos_2fa(usuario_id,codigo_hash,expira_en)
+              VALUES(@usuarioId,@hash,NOW()+INTERVAL '10 minutes')",
+            new { usuarioId = u.Id, hash = HashToken(codigo) });
+        await _email.EnviarAsync(u.Email, "Codigo de seguridad - Finanzas Personales",
+            PlantillaCorreo("Codigo de seguridad", u.NombreCompleto,
+                $"Tu codigo de verificacion es <strong style='font-size:22px'>{codigo}</strong>.",
+                "Abrir aplicacion", Url.Action("Login", "Acceso", null, Request.Scheme)!,
+                "Este codigo vence en 10 minutos. Si no intentaste ingresar, cambia tu contrasena."));
     }
 
     [Authorize]

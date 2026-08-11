@@ -32,11 +32,13 @@ builder.Services.AddAntiforgery(opt =>
         : CookieSecurePolicy.Always;
 });
 builder.Services.AddSingleton<Db>();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient<AsistenteFinancieroService>();
 builder.Services.AddSingleton<TraduccionService>();
 builder.Services.AddHttpClient<EmailService>();
 builder.Services.AddHttpClient<WhatsAppService>();
 builder.Services.AddHttpClient<PreferenciasUsuarioService>();
+builder.Services.AddScoped<AuditoriaService>();
 builder.Services.AddHostedService<RecordatoriosEmailHostedService>();
 builder.Services.AddRateLimiter(opt =>
 {
@@ -179,6 +181,45 @@ using (var scope = app.Services.CreateScope())
         con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS idioma VARCHAR(5) NOT NULL DEFAULT 'es'");
         con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP'");
         con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS zona_horaria VARCHAR(80) NOT NULL DEFAULT 'America/Bogota'");
+        con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE");
+        con.Execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS onboarding_completado BOOLEAN NOT NULL DEFAULT FALSE");
+        con.Execute(
+            @"CREATE TABLE IF NOT EXISTS auditoria_eventos (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NULL REFERENCES usuarios(id) ON DELETE SET NULL,
+                  actor_usuario_id INT NULL REFERENCES usuarios(id) ON DELETE SET NULL,
+                  modulo VARCHAR(80) NOT NULL,
+                  accion VARCHAR(80) NOT NULL,
+                  entidad VARCHAR(80) NOT NULL,
+                  entidad_id INT NULL,
+                  resumen VARCHAR(500) NOT NULL,
+                  ip VARCHAR(80) NULL,
+                  user_agent VARCHAR(300) NULL,
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+              );
+              CREATE INDEX IF NOT EXISTS idx_auditoria_usuario_fecha ON auditoria_eventos (usuario_id, creado_en DESC);
+              CREATE INDEX IF NOT EXISTS idx_auditoria_actor_fecha ON auditoria_eventos (actor_usuario_id, creado_en DESC);
+              CREATE TABLE IF NOT EXISTS login_eventos (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NULL REFERENCES usuarios(id) ON DELETE SET NULL,
+                  email VARCHAR(180) NOT NULL,
+                  exitoso BOOLEAN NOT NULL,
+                  motivo VARCHAR(120) NOT NULL,
+                  ip VARCHAR(80) NULL,
+                  user_agent VARCHAR(300) NULL,
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+              );
+              CREATE INDEX IF NOT EXISTS idx_login_eventos_usuario_fecha ON login_eventos (usuario_id, creado_en DESC);
+              CREATE INDEX IF NOT EXISTS idx_login_eventos_email_fecha ON login_eventos (LOWER(email), creado_en DESC);
+              CREATE TABLE IF NOT EXISTS usuario_codigos_2fa (
+                  id SERIAL PRIMARY KEY,
+                  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                  codigo_hash VARCHAR(128) NOT NULL,
+                  expira_en TIMESTAMP NOT NULL,
+                  usado_en TIMESTAMP NULL,
+                  creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+              );
+              CREATE INDEX IF NOT EXISTS idx_usuario_codigos_2fa_usuario ON usuario_codigos_2fa (usuario_id, expira_en DESC)");
         con.Execute(
             @"CREATE TABLE IF NOT EXISTS monedas (
                   codigo VARCHAR(3) PRIMARY KEY,

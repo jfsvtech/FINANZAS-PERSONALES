@@ -34,6 +34,27 @@ public class AsistenteFinancieroService
         vm.Gastos = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM movimientos WHERE usuario_id=@usuarioId AND tipo='gasto' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
         vm.IngresosAnterior = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM movimientos WHERE usuario_id=@usuarioId AND tipo='ingreso' AND fecha>=@anterior AND fecha<@desde", p) ?? 0;
         vm.GastosAnterior = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM movimientos WHERE usuario_id=@usuarioId AND tipo='gasto' AND fecha>=@anterior AND fecha<@desde", p) ?? 0;
+        vm.DeudaTarjetas = Math.Max(0, con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(CASE WHEN m.tipo='gasto' THEN m.monto WHEN m.tipo='pago_tarjeta' THEN -m.monto ELSE 0 END)
+              FROM movimientos m JOIN cuentas c ON c.id=COALESCE(m.cuenta_destino_id,m.cuenta_id)
+              WHERE m.usuario_id=@usuarioId AND c.tipo='tarjeta_credito'
+                AND ((m.tipo='gasto' AND m.cuenta_id=c.id) OR (m.tipo='pago_tarjeta' AND m.cuenta_destino_id=c.id))",
+            new { usuarioId }) ?? 0);
+        vm.SaldoPorCobrar = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(GREATEST(0,p.capital - COALESCE((SELECT SUM(pp.monto) FROM prestamo_pagos pp
+              WHERE pp.prestamo_id=p.id AND pp.tipo='abono_capital'),0)))
+              FROM prestamos p WHERE p.usuario_id=@usuarioId AND p.estado='activo'", new { usuarioId }) ?? 0;
+        vm.SaldoPorPagar = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(GREATEST(0,d.capital_inicial - COALESCE((SELECT SUM(dp.capital) FROM deuda_pagos dp
+              WHERE dp.deuda_id=d.id),0)))
+              FROM deudas d WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')", new { usuarioId }) ?? 0;
+        vm.ValorInversiones = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(GREATEST(0,COALESCE(v.valor,i.capital_inicial) +
+              COALESCE((SELECT SUM(CASE WHEN m.tipo IN ('aporte','rendimiento') THEN m.monto ELSE -m.monto END)
+              FROM inversion_movimientos m WHERE m.inversion_id=i.id AND (v.fecha IS NULL OR m.fecha>v.fecha)),0)))
+              FROM inversiones i LEFT JOIN LATERAL (
+              SELECT valor,fecha FROM inversion_valoraciones WHERE inversion_id=i.id ORDER BY fecha DESC,id DESC LIMIT 1
+              ) v ON TRUE WHERE i.usuario_id=@usuarioId AND i.estado='activa'", new { usuarioId }) ?? 0;
         vm.Categorias = con.Query<GastoCategoriaVm>(
             @"SELECT c.nombre,c.color,c.icono,SUM(m.monto) total FROM movimientos m
               JOIN categorias c ON c.id=m.categoria_id
@@ -53,6 +74,47 @@ public class AsistenteFinancieroService
         var ingresos = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM movimientos WHERE usuario_id=@usuarioId AND tipo='ingreso' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
         var gastos = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM movimientos WHERE usuario_id=@usuarioId AND tipo='gasto' AND fecha>=@desde AND fecha<@hasta", p) ?? 0;
         var gastosAnterior = con.ExecuteScalar<decimal?>("SELECT SUM(monto) FROM movimientos WHERE usuario_id=@usuarioId AND tipo='gasto' AND fecha>=@anterior AND fecha<@desde", p) ?? 0;
+        var liquidez = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(CASE
+                    WHEN m.tipo='ingreso' AND c.tipo<>'tarjeta_credito' THEN m.monto
+                    WHEN m.tipo='gasto' AND c.tipo<>'tarjeta_credito' THEN -m.monto
+                    WHEN m.tipo='pago_tarjeta' THEN -m.monto
+                    ELSE 0 END)
+              FROM movimientos m JOIN cuentas c ON c.id=m.cuenta_id
+              WHERE m.usuario_id=@usuarioId", new { usuarioId }) ?? 0;
+        var deudaTarjetas = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(CASE
+                  WHEN m.tipo='gasto' THEN m.monto
+                  WHEN m.tipo='pago_tarjeta' THEN -m.monto
+                  ELSE 0 END)
+              FROM movimientos m
+              JOIN cuentas c ON c.id = COALESCE(m.cuenta_destino_id, m.cuenta_id)
+              WHERE m.usuario_id=@usuarioId AND c.tipo='tarjeta_credito'
+                AND ((m.tipo='gasto' AND m.cuenta_id=c.id) OR (m.tipo='pago_tarjeta' AND m.cuenta_destino_id=c.id))",
+            new { usuarioId }) ?? 0;
+        deudaTarjetas = Math.Max(0, deudaTarjetas);
+        var deudaPrincipal = con.QueryFirstOrDefault<Deuda>(
+            @"SELECT d.id,d.acreedor,d.tipo,d.capital_inicial AS CapitalInicial,d.tasa,d.periodo_tasa AS PeriodoTasa,
+                     COALESCE((SELECT SUM(dp.capital) FROM deuda_pagos dp WHERE dp.deuda_id=d.id),0) AS CapitalPagado
+              FROM deudas d
+              WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')
+              ORDER BY
+                (CASE WHEN d.periodo_tasa='anual'
+                    THEN (POWER(1 + d.tasa / 100.0, 1.0 / 12.0) - 1) * 100
+                    ELSE d.tasa END) DESC,
+                d.capital_inicial DESC
+              LIMIT 1", new { usuarioId });
+        var saldoDeudas = con.ExecuteScalar<decimal?>(
+            @"SELECT SUM(GREATEST(0,d.capital_inicial - COALESCE((
+                  SELECT SUM(dp.capital) FROM deuda_pagos dp WHERE dp.deuda_id=d.id
+              ),0)))
+              FROM deudas d WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')",
+            new { usuarioId }) ?? 0;
+        var proximaDeuda = con.QueryFirstOrDefault<Deuda>(
+            @"SELECT id,acreedor,proxima_fecha_pago AS ProximaFechaPago,cuota_estimada AS CuotaEstimada
+              FROM deudas
+              WHERE usuario_id=@usuarioId AND estado IN ('activa','vencida') AND proxima_fecha_pago IS NOT NULL
+              ORDER BY proxima_fecha_pago LIMIT 1", new { usuarioId });
         var recomendaciones = new List<RecomendacionFinancieraVm>();
 
         if (ingresos > 0 && gastos > ingresos)
@@ -64,6 +126,52 @@ public class AsistenteFinancieroService
 
         if (gastosAnterior > 0 && gastos > gastosAnterior * 1.20m)
             recomendaciones.Add(new() { Tipo="warning", Icono="bi-arrow-up-right", Titulo="Tus gastos aumentaron mas de 20%", Detalle=$"Gastaste {(gastos-gastosAnterior):C0} mas que el mes anterior.", Accion="Ver comparacion", Controller="Dashboard" });
+
+        if (saldoDeudas > 0 && deudaPrincipal != null)
+            recomendaciones.Add(new()
+            {
+                Tipo = "danger",
+                Icono = "bi-shield-exclamation",
+                Titulo = $"Prioriza la deuda con mayor costo: {deudaPrincipal.Acreedor}",
+                Detalle = $"Tiene una tasa mensual equivalente de {deudaPrincipal.TasaMensualEquivalente:0.##}% y saldo aproximado de {deudaPrincipal.SaldoCapital:C0}. Un abono extra ahi suele ahorrar mas intereses.",
+                Accion = "Analizar deudas",
+                Controller = "Prestamos",
+                Action = "Tablero"
+            });
+
+        if (proximaDeuda?.ProximaFechaPago.HasValue == true && proximaDeuda.ProximaFechaPago.Value.Date <= DateTime.Today.AddDays(7))
+            recomendaciones.Add(new()
+            {
+                Tipo = proximaDeuda.ProximaFechaPago.Value.Date < DateTime.Today ? "danger" : "warning",
+                Icono = "bi-calendar2-week",
+                Titulo = $"Pago cercano: {proximaDeuda.Acreedor}",
+                Detalle = $"Vence el {proximaDeuda.ProximaFechaPago:dd MMM yyyy}. Monto de referencia: {(proximaDeuda.CuotaEstimada ?? 0):C0}.",
+                Accion = "Ver calendario",
+                Controller = "Calendario"
+            });
+
+        if (liquidez > 0 && saldoDeudas + deudaTarjetas > liquidez * 2)
+            recomendaciones.Add(new()
+            {
+                Tipo = "warning",
+                Icono = "bi-bank",
+                Titulo = "Tu deuda supera dos veces tu liquidez",
+                Detalle = $"Pasivos estimados: {(saldoDeudas + deudaTarjetas):C0}. Liquidez estimada: {liquidez:C0}. Conviene preparar un plan de abonos.",
+                Accion = "Ver analisis crediticio",
+                Controller = "Prestamos",
+                Action = "Tablero"
+            });
+
+        if (deudaTarjetas > 0)
+            recomendaciones.Add(new()
+            {
+                Tipo = "info",
+                Icono = "bi-credit-card",
+                Titulo = "Controla el uso de tarjetas de credito",
+                Detalle = $"Tu deuda actual en tarjetas es {deudaTarjetas:C0}. El pago de tarjeta impacta la caja cuando realmente sale el dinero.",
+                Accion = "Ver movimientos",
+                Controller = "Movimientos"
+            });
 
         var categoria = con.QueryFirstOrDefault<GastoCategoriaVm>(
             @"SELECT c.nombre,c.color,c.icono,SUM(m.monto) total FROM movimientos m JOIN categorias c ON c.id=m.categoria_id

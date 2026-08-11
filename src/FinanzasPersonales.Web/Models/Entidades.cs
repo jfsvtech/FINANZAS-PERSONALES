@@ -34,9 +34,38 @@ public class Usuario
     public string Idioma { get; set; } = "es";
     public string MonedaCodigo { get; set; } = "COP";
     public string ZonaHoraria { get; set; } = "America/Bogota";
+    public bool TwoFactorEnabled { get; set; }
+    public bool OnboardingCompletado { get; set; }
     public int DiasMora => ProximoPago.HasValue && DateTime.Today > ProximoPago.Value.Date.AddDays(DiasGracia)
         ? (DateTime.Today - ProximoPago.Value.Date.AddDays(DiasGracia)).Days
         : 0;
+}
+
+public class AuditoriaEvento
+{
+    public int Id { get; set; }
+    public int? UsuarioId { get; set; }
+    public int? ActorUsuarioId { get; set; }
+    public string Modulo { get; set; } = "";
+    public string Accion { get; set; } = "";
+    public string Entidad { get; set; } = "";
+    public int? EntidadId { get; set; }
+    public string Resumen { get; set; } = "";
+    public string Ip { get; set; } = "";
+    public string UserAgent { get; set; } = "";
+    public DateTime CreadoEn { get; set; }
+}
+
+public class LoginEvento
+{
+    public int Id { get; set; }
+    public int? UsuarioId { get; set; }
+    public string Email { get; set; } = "";
+    public bool Exitoso { get; set; }
+    public string Motivo { get; set; } = "";
+    public string Ip { get; set; } = "";
+    public string UserAgent { get; set; } = "";
+    public DateTime CreadoEn { get; set; }
 }
 
 public class Moneda
@@ -626,6 +655,12 @@ public class InicioVm
     public decimal InteresPendiente { get; set; }
     public decimal InteresMensualEsperado { get; set; }
     public int PrestamosAtrasados { get; set; }
+    public int DeudasActivas { get; set; }
+    public decimal SaldoPorPagar { get; set; }
+    public decimal CuotasDeudaMes { get; set; }
+    public decimal InteresDeudasMensual { get; set; }
+    public int DeudasVencidas { get; set; }
+    public decimal PosicionCrediticiaNeta => SaldoPorCobrar - SaldoPorPagar - DeudaTarjetas;
     public int CuentasActivas { get; set; }
     public int CategoriasActivas { get; set; }
     public int MetasActivas { get; set; }
@@ -648,16 +683,22 @@ public class DirectivoVm
 {
     public decimal Liquidez { get; set; }
     public decimal DeudaTarjetas { get; set; }
+    public decimal DeudasPorPagar { get; set; }
+    public decimal InteresDeudasMensual { get; set; }
     public decimal SaldoPrestamos { get; set; }
     public decimal InteresPendiente { get; set; }
     public decimal MetasAhorradas { get; set; }
     public decimal ValorInversiones { get; set; }
     public decimal IngresosMes { get; set; }
     public decimal GastosMes { get; set; }
-    public decimal PatrimonioNeto => Liquidez + SaldoPrestamos + MetasAhorradas + ValorInversiones - DeudaTarjetas;
+    public decimal PatrimonioNeto => Liquidez + SaldoPrestamos + MetasAhorradas + ValorInversiones - DeudaTarjetas - DeudasPorPagar;
+    public decimal ActivosProductivos => SaldoPrestamos + ValorInversiones;
+    public decimal PasivosTotales => DeudaTarjetas + DeudasPorPagar;
+    public decimal CoberturaActivosPasivos => PasivosTotales > 0 ? Math.Round((Liquidez + ActivosProductivos) * 100 / PasivosTotales, 1) : 100;
     public decimal ResultadoMes => IngresosMes - GastosMes;
     public List<SerieMesVm> SerieMensual { get; set; } = new();
     public List<GastoCategoriaVm> Composicion { get; set; } = new();
+    public List<GastoCategoriaVm> Pasivos { get; set; } = new();
 }
 
 public class CobroMesVm
@@ -672,23 +713,90 @@ public class CobroMesVm
 public class PrestamosTableroVm
 {
     public List<Prestamo> Prestamos { get; set; } = new();
+    public List<Deuda> Deudas { get; set; } = new();
     public List<CobroMesVm> CobrosPorMes { get; set; } = new();
+    public List<CobroMesVm> PagosDeudasPorMes { get; set; } = new();
     public List<GastoCategoriaVm> SaldoPorPersona { get; set; } = new();
+    public List<GastoCategoriaVm> SaldoPorAcreedor { get; set; } = new();
     public List<Persona> Personas { get; set; } = new();
     public int? FiltroPersonaId { get; set; }
     public DateTime? FiltroDesde { get; set; }
     public DateTime? FiltroHasta { get; set; }
     public decimal InteresCobradoPeriodo => CobrosPorMes.Sum(x => x.Intereses);
     public decimal CapitalRecuperadoPeriodo => CobrosPorMes.Sum(x => x.Capital);
+    public decimal InteresPagadoPeriodo => PagosDeudasPorMes.Sum(x => x.Intereses);
+    public decimal CapitalPagadoPeriodo => PagosDeudasPorMes.Sum(x => x.Capital);
 
     public List<Prestamo> Activos => Prestamos.Where(p => p.Estado == "activo").ToList();
+    public List<Deuda> DeudasActivas => Deudas.Where(p => p.Estado is "activa" or "vencida").ToList();
     public int CantidadActivos => Activos.Count;
     public int CantidadPagados => Prestamos.Count(p => p.Estado == "pagado");
+    public int CantidadDeudasActivas => DeudasActivas.Count;
+    public int CantidadDeudasPagadas => Deudas.Count(p => p.Estado == "pagada");
     public decimal TotalPrestadoActivo => Activos.Sum(p => p.Capital);
     public decimal TotalSaldoCapital => Activos.Sum(p => p.SaldoCapital);
     public decimal TotalInteresPendiente => Activos.Sum(p => p.InteresPendiente);
     public decimal TotalInteresCobrado => Prestamos.Sum(p => p.InteresPagado);
     public decimal InteresMensualEsperado => Activos.Sum(p => p.InteresMensualActual);
+    public decimal TotalDeudasCapital => DeudasActivas.Sum(p => p.CapitalInicial);
+    public decimal TotalSaldoDeudas => DeudasActivas.Sum(p => p.SaldoCapital);
+    public decimal TotalInteresDeudasPagado => Deudas.Sum(p => p.InteresPagado);
+    public decimal InteresDeudasMensual => DeudasActivas.Sum(p => p.InteresMensualEstimado);
+    public decimal PosicionNeta => TotalSaldoCapital - TotalSaldoDeudas;
+}
+
+public class EstrategiaDeudaItemVm
+{
+    public int Id { get; set; }
+    public string Acreedor { get; set; } = "";
+    public string Tipo { get; set; } = "";
+    public decimal SaldoCapital { get; set; }
+    public decimal TasaMensual { get; set; }
+    public decimal CuotaReferencia { get; set; }
+    public int OrdenAvalancha { get; set; }
+    public int OrdenBolaNieve { get; set; }
+    public decimal InteresMensualEstimado => Math.Round(SaldoCapital * TasaMensual / 100m, 0);
+}
+
+public class EstrategiaDeudasVm
+{
+    public List<EstrategiaDeudaItemVm> Deudas { get; set; } = new();
+    public decimal AbonoExtraMensual { get; set; }
+    public string Metodo { get; set; } = "avalancha";
+    public decimal SaldoTotal => Deudas.Sum(x => x.SaldoCapital);
+    public decimal CuotasBase => Deudas.Sum(x => x.CuotaReferencia);
+    public decimal InteresMensualTotal => Deudas.Sum(x => x.InteresMensualEstimado);
+    public List<EstrategiaPagoPasoVm> Plan { get; set; } = new();
+    public DateTime? FechaLibreDeDeudas { get; set; }
+    public int MesesEstimados { get; set; }
+}
+
+public class EstrategiaPagoPasoVm
+{
+    public int Mes { get; set; }
+    public string Objetivo { get; set; } = "";
+    public decimal PagoTotal { get; set; }
+    public decimal SaldoRestante { get; set; }
+}
+
+public class SeguridadUsuarioVm
+{
+    public bool TwoFactorEnabled { get; set; }
+    public DateTime? UltimoAcceso { get; set; }
+    public List<LoginEvento> LoginEventos { get; set; } = new();
+    public List<AuditoriaEvento> Auditoria { get; set; } = new();
+}
+
+public class OnboardingVm
+{
+    public bool TieneCuentas { get; set; }
+    public bool TieneCategorias { get; set; }
+    public bool TieneMovimiento { get; set; }
+    public string MonedaCodigo { get; set; } = "COP";
+    public string Idioma { get; set; } = "es";
+    public bool RecordatoriosEmailActivos { get; set; } = true;
+    public int RecordatoriosEmailDiasAntes { get; set; } = 3;
+    public int PasoActual => !TieneCuentas ? 1 : !TieneCategorias ? 2 : !TieneMovimiento ? 3 : 4;
 }
 
 public class RecomendacionFinancieraVm
@@ -712,6 +820,11 @@ public class InformeMensualVm
     public decimal GastosAnterior { get; set; }
     public decimal Balance => Ingresos - Gastos;
     public decimal TasaAhorro => Ingresos > 0 ? Math.Round(Balance * 100 / Ingresos, 1) : 0;
+    public decimal DeudaTarjetas { get; set; }
+    public decimal SaldoPorCobrar { get; set; }
+    public decimal SaldoPorPagar { get; set; }
+    public decimal ValorInversiones { get; set; }
+    public decimal PatrimonioOperativo => ValorInversiones + SaldoPorCobrar - SaldoPorPagar - DeudaTarjetas;
     public List<GastoCategoriaVm> Categorias { get; set; } = new();
     public List<RecomendacionFinancieraVm> Recomendaciones { get; set; } = new();
     public string Periodo => new DateTime(Anio, Mes, 1).ToString("MMMM yyyy");

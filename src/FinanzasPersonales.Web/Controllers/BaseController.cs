@@ -19,6 +19,12 @@ public abstract class BaseController : Controller
     {
         AplicarCulturaUsuario();
         var controller = context.RouteData.Values["controller"]?.ToString() ?? "";
+        var onboardingCompletado = User.FindFirstValue("OnboardingCompletado") == "true";
+        if (!EsAdmin && !onboardingCompletado && controller is not ("Onboarding" or "Acceso" or "Documentacion"))
+        {
+            context.Result = RedirectToAction("Index", "Onboarding");
+            return;
+        }
         var permiso = PermisoRequerido(controller);
         if (!string.IsNullOrWhiteSpace(permiso) && !EsAdmin && !User.HasClaim(permiso, "true"))
         {
@@ -59,6 +65,7 @@ public abstract class BaseController : Controller
         "Directivo" => "PermisoDirectivo",
         "Asistente" => "PermisoAsistente",
         "Calendario" => "PermisoCalendario",
+        "Onboarding" => "",
         "Usuarios" or "Configuracion" => "EsAdmin",
         "Documentacion" => "",
         _ => ""

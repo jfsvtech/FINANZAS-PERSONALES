@@ -16,13 +16,15 @@ public class UsuariosController : BaseController
     private readonly EmailService _email;
     private readonly PreferenciasUsuarioService _preferencias;
     private readonly TraduccionService _traduccion;
+    private readonly AuditoriaService _auditoria;
 
-    public UsuariosController(Db db, EmailService email, PreferenciasUsuarioService preferencias, TraduccionService traduccion)
+    public UsuariosController(Db db, EmailService email, PreferenciasUsuarioService preferencias, TraduccionService traduccion, AuditoriaService auditoria)
     {
         _db = db;
         _email = email;
         _preferencias = preferencias;
         _traduccion = traduccion;
+        _auditoria = auditoria;
     }
 
     public IActionResult Index(bool incluirInactivos = false)
@@ -170,6 +172,7 @@ public class UsuariosController : BaseController
             TempData[envio.Ok ? "Ok" : "Error"] = envio.Ok
                 ? $"Usuario '{email}' creado. {envio.Message}"
                 : $"Usuario '{email}' creado, pero no se pudo enviar la verificacion. {envio.Message}";
+            _auditoria.Registrar(nuevoId, UsuarioId, "Usuarios", "Crear", "usuarios", nuevoId, $"Usuario {email} creado.");
         }
         else
         {
@@ -245,6 +248,7 @@ public class UsuariosController : BaseController
             {
                 TempData["Ok"] = "Usuario actualizado.";
             }
+            _auditoria.Registrar(id, UsuarioId, "Usuarios", "Actualizar", "usuarios", id, $"Usuario {email} actualizado.");
         }
         return RedirectToAction("Index");
     }
@@ -300,6 +304,7 @@ public class UsuariosController : BaseController
         }
 
         TempData["Ok"] = "Pago de suscripcion registrado.";
+        _auditoria.Registrar(usuarioId, UsuarioId, "Usuarios", "Registrar pago suscripcion", "usuario_pagos_suscripcion", usuarioId, $"Pago de suscripcion por {monto:N0} registrado.");
         return RedirectToAction("Index");
     }
 
@@ -315,6 +320,7 @@ public class UsuariosController : BaseController
               WHERE id=@id",
             new { id });
         TempData["Ok"] = "Usuario suspendido por mora. No podra ingresar hasta que lo reactives o registres pago.";
+        _auditoria.Registrar(id, UsuarioId, "Usuarios", "Suspender por mora", "usuarios", id, "Usuario suspendido por mora.");
         return RedirectToAction("Index");
     }
 
@@ -330,6 +336,7 @@ public class UsuariosController : BaseController
               WHERE id=@id",
             new { id });
         TempData["Ok"] = "Cliente reactivado.";
+        _auditoria.Registrar(id, UsuarioId, "Usuarios", "Reactivar", "usuarios", id, "Usuario reactivado.");
         return RedirectToAction("Index");
     }
 
@@ -421,6 +428,7 @@ public class UsuariosController : BaseController
             con.Execute("DELETE FROM usuarios WHERE id=@id", new { id }, tx);
             tx.Commit();
             TempData["Ok"] = $"Usuario de prueba '{usuario.Email}' eliminado con sus datos asociados.";
+            _auditoria.Registrar(id, UsuarioId, "Usuarios", "Eliminar", "usuarios", id, $"Usuario {usuario.Email} eliminado.");
         }
         catch (Exception ex)
         {

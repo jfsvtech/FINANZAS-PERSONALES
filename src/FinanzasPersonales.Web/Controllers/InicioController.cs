@@ -112,6 +112,31 @@ public class InicioController : BaseController
         vm.InteresMensualEsperado = prestamos.Sum(x => x.InteresMensualActual);
         vm.PrestamosAtrasados = prestamos.Count(x => x.InteresMensualActual > 0 && x.InteresPendiente >= x.InteresMensualActual);
 
+        var deudas = con.Query<Deuda>(
+            @"SELECT d.id,d.usuario_id AS UsuarioId,d.acreedor,d.fecha_desembolso AS FechaDesembolso,
+                     d.capital_inicial AS CapitalInicial,d.tasa,d.periodo_tasa AS PeriodoTasa,
+                     d.proxima_fecha_pago AS ProximaFechaPago,d.cuota_estimada AS CuotaEstimada,d.estado
+              FROM deudas d
+              WHERE d.usuario_id=@usuarioId AND d.estado IN ('activa','vencida')",
+            new { usuarioId = UsuarioId }).ToList();
+        var pagosDeudas = con.Query<DeudaPago>(
+            @"SELECT deuda_id AS DeudaId, capital, interes, costos, monto_total AS MontoTotal
+              FROM deuda_pagos WHERE usuario_id=@usuarioId",
+            new { usuarioId = UsuarioId }).ToLookup(x => x.DeudaId);
+        foreach (var deuda in deudas)
+        {
+            deuda.CapitalPagado = pagosDeudas[deuda.Id].Sum(x => x.Capital);
+            deuda.InteresPagado = pagosDeudas[deuda.Id].Sum(x => x.Interes);
+            deuda.CostosPagados = pagosDeudas[deuda.Id].Sum(x => x.Costos);
+            deuda.TotalPagado = pagosDeudas[deuda.Id].Sum(x => x.MontoTotal);
+        }
+        vm.DeudasActivas = deudas.Count;
+        vm.SaldoPorPagar = deudas.Sum(x => x.SaldoCapital);
+        vm.CuotasDeudaMes = deudas.Where(x => x.ProximaFechaPago >= desde && x.ProximaFechaPago < hasta)
+            .Sum(x => x.CuotaEstimada ?? x.InteresMensualEstimado);
+        vm.InteresDeudasMensual = deudas.Sum(x => x.InteresMensualEstimado);
+        vm.DeudasVencidas = deudas.Count(x => x.Estado == "vencida" || (x.ProximaFechaPago.HasValue && x.ProximaFechaPago.Value.Date < hoy));
+
         vm.InversionesActivas = con.ExecuteScalar<int>(
             "SELECT COUNT(*) FROM inversiones WHERE usuario_id=@usuarioId AND estado='activa'",
             new { usuarioId = UsuarioId });

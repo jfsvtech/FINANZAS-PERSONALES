@@ -10,11 +10,13 @@ public class DeudasController : BaseController
 {
     private readonly Db _db;
     private readonly PreferenciasUsuarioService _preferencias;
+    private readonly AuditoriaService _auditoria;
 
-    public DeudasController(Db db, PreferenciasUsuarioService preferencias)
+    public DeudasController(Db db, PreferenciasUsuarioService preferencias, AuditoriaService auditoria)
     {
         _db = db;
         _preferencias = preferencias;
+        _auditoria = auditoria;
     }
 
     public IActionResult Index(string? estado, string? tipo)
@@ -54,6 +56,36 @@ public class DeudasController : BaseController
             Monedas = _preferencias.Monedas(),
             MonedaBase = pref.MonedaCodigo
         });
+    }
+
+    public IActionResult Estrategia(decimal abonoExtraMensual = 0, string metodo = "avalancha")
+    {
+        metodo = metodo == "bola_nieve" ? "bola_nieve" : "avalancha";
+        abonoExtraMensual = Math.Max(0, abonoExtraMensual);
+        using var con = _db.Abrir();
+        var deudas = ConsultarDeudas(con).Where(x => x.Estado is "activa" or "vencida").ToList();
+        var pagos = ConsultarPagos(con).ToLookup(x => x.DeudaId);
+        foreach (var deuda in deudas) CompletarCalculos(deuda, pagos[deuda.Id]);
+        var items = deudas.Where(x => x.SaldoCapital > 0).Select(x => new EstrategiaDeudaItemVm
+        {
+            Id = x.Id,
+            Acreedor = x.Acreedor,
+            Tipo = x.TipoTexto,
+            SaldoCapital = x.SaldoCapital,
+            TasaMensual = x.TasaMensualEquivalente,
+            CuotaReferencia = Math.Max(x.CuotaEstimada ?? 0, x.InteresMensualEstimado)
+        }).ToList();
+
+        var avalancha = items.OrderByDescending(x => x.TasaMensual).ThenByDescending(x => x.SaldoCapital).ToList();
+        var bola = items.OrderBy(x => x.SaldoCapital).ThenByDescending(x => x.TasaMensual).ToList();
+        for (var i = 0; i < avalancha.Count; i++) avalancha[i].OrdenAvalancha = i + 1;
+        for (var i = 0; i < bola.Count; i++) bola[i].OrdenBolaNieve = i + 1;
+
+        var vm = new EstrategiaDeudasVm { Deudas = items, AbonoExtraMensual = abonoExtraMensual, Metodo = metodo };
+        vm.Plan = SimularPlan(items, metodo, abonoExtraMensual, out var meses);
+        vm.MesesEstimados = meses;
+        vm.FechaLibreDeDeudas = meses > 0 ? DateTime.Today.AddMonths(meses) : null;
+        return View(vm);
     }
 
     [HttpPost]
@@ -124,6 +156,7 @@ public class DeudasController : BaseController
                     notas
                 });
             TempData["Ok"] = "Deuda registrada.";
+            _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Crear", "deudas", nuevoId, $"Deuda con {acreedor} creada.");
             return RedirectToAction("Detalle", new { id = nuevoId });
         }
 
@@ -160,6 +193,7 @@ public class DeudasController : BaseController
             });
         ActualizarEstado(con, id);
         TempData["Ok"] = "Deuda actualizada.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Actualizar", "deudas", id, $"Deuda con {acreedor} actualizada.");
         return RedirectToAction("Detalle", new { id });
     }
 
@@ -237,6 +271,7 @@ public class DeudasController : BaseController
         }
         ActualizarEstado(con, deudaId);
         TempData["Ok"] = "Pago de deuda registrado.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Registrar pago", "deuda_pagos", deudaId, $"Pago de deuda por {montoTotal:N0} registrado.");
         return RedirectToAction("Detalle", new { id = deudaId });
     }
 
@@ -248,6 +283,7 @@ public class DeudasController : BaseController
         con.Execute("DELETE FROM deuda_pagos WHERE id=@id AND deuda_id=@deudaId AND usuario_id=@UsuarioId", new { id, deudaId, UsuarioId });
         ActualizarEstado(con, deudaId);
         TempData["Ok"] = "Pago eliminado.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Eliminar pago", "deuda_pagos", id, $"Pago de deuda eliminado.");
         return RedirectToAction("Detalle", new { id = deudaId });
     }
 
@@ -258,6 +294,7 @@ public class DeudasController : BaseController
         using var con = _db.Abrir();
         con.Execute("DELETE FROM deudas WHERE id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
         TempData["Ok"] = "Deuda eliminada con su historial.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Eliminar", "deudas", id, "Deuda eliminada con historial.");
         return RedirectToAction("Index");
     }
 
@@ -352,5 +389,53 @@ public class DeudasController : BaseController
     {
         efecto = (efecto ?? "").Trim().ToLowerInvariant();
         return efecto is "reducir_plazo" or "reducir_cuota" ? efecto : "no_aplica";
+    }
+
+    private static List<EstrategiaPagoPasoVm> SimularPlan(List<EstrategiaDeudaItemVm> origen, string metodo, decimal abonoExtra, out int meses)
+    {
+        var saldos = origen.Select(x => new EstrategiaDeudaItemVm
+        {
+            Id = x.Id,
+            Acreedor = x.Acreedor,
+            Tipo = x.Tipo,
+            SaldoCapital = x.SaldoCapital,
+            TasaMensual = x.TasaMensual,
+            CuotaReferencia = x.CuotaReferencia <= 0 ? Math.Max(1, Math.Round(x.SaldoCapital * 0.03m, 0)) : x.CuotaReferencia
+        }).ToList();
+        var pasos = new List<EstrategiaPagoPasoVm>();
+        meses = 0;
+        if (!saldos.Any()) return pasos;
+        var pagoBase = saldos.Sum(x => x.CuotaReferencia) + abonoExtra;
+        var limite = 600;
+        while (saldos.Any(x => x.SaldoCapital > 0) && meses < limite)
+        {
+            meses++;
+            foreach (var deuda in saldos.Where(x => x.SaldoCapital > 0))
+                deuda.SaldoCapital += Math.Round(deuda.SaldoCapital * deuda.TasaMensual / 100m, 0);
+
+            var objetivo = metodo == "bola_nieve"
+                ? saldos.Where(x => x.SaldoCapital > 0).OrderBy(x => x.SaldoCapital).ThenByDescending(x => x.TasaMensual).First()
+                : saldos.Where(x => x.SaldoCapital > 0).OrderByDescending(x => x.TasaMensual).ThenByDescending(x => x.SaldoCapital).First();
+            var disponible = pagoBase;
+            foreach (var deuda in saldos.Where(x => x.SaldoCapital > 0 && x.Id != objetivo.Id))
+            {
+                var pago = Math.Min(deuda.SaldoCapital, deuda.CuotaReferencia);
+                deuda.SaldoCapital -= pago;
+                disponible -= pago;
+            }
+            objetivo.SaldoCapital -= Math.Min(objetivo.SaldoCapital, Math.Max(0, disponible));
+            foreach (var deuda in saldos.Where(x => x.SaldoCapital < 1)) deuda.SaldoCapital = 0;
+            if (meses <= 36 || meses % 6 == 0 || saldos.All(x => x.SaldoCapital <= 0))
+            {
+                pasos.Add(new EstrategiaPagoPasoVm
+                {
+                    Mes = meses,
+                    Objetivo = objetivo.Acreedor,
+                    PagoTotal = pagoBase,
+                    SaldoRestante = saldos.Sum(x => x.SaldoCapital)
+                });
+            }
+        }
+        return pasos;
     }
 }

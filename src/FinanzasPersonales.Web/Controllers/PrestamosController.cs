@@ -10,11 +10,13 @@ public class PrestamosController : BaseController
 {
     private readonly Db _db;
     private readonly PreferenciasUsuarioService _preferencias;
+    private readonly AuditoriaService _auditoria;
 
-    public PrestamosController(Db db, PreferenciasUsuarioService preferencias)
+    public PrestamosController(Db db, PreferenciasUsuarioService preferencias, AuditoriaService auditoria)
     {
         _db = db;
         _preferencias = preferencias;
+        _auditoria = auditoria;
     }
 
     public IActionResult Index(int? personaId, string? estado, DateTime? desde, DateTime? hasta)
@@ -53,6 +55,7 @@ public class PrestamosController : BaseController
             FiltroDesde = desde,
             FiltroHasta = hasta,
             Prestamos = ConsultarPrestamos(con, personaId: personaId),
+            Deudas = ConsultarDeudasTablero(con),
             Personas = con.Query<Persona>(
                 @"SELECT id, nombre FROM personas WHERE usuario_id=@UsuarioId AND activo ORDER BY nombre",
                 new { UsuarioId }).ToList()
@@ -63,6 +66,10 @@ public class PrestamosController : BaseController
         var pagosPorPrestamo = pagos.ToLookup(x => x.PrestamoId);
         foreach (var p in vm.Prestamos)
             CalculoPrestamos.CompletarCalculos(p, pagosPorPrestamo[p.Id].ToList());
+        var pagosDeuda = ConsultarPagosDeudaTablero(con);
+        var pagosPorDeuda = pagosDeuda.ToLookup(x => x.DeudaId);
+        foreach (var deuda in vm.Deudas)
+            CompletarCalculosDeuda(deuda, pagosPorDeuda[deuda.Id]);
 
         var inicioSerie = desde?.Date ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-11);
         var finSerie = hasta?.Date ?? DateTime.Today;
@@ -77,6 +84,17 @@ public class PrestamosController : BaseController
                 Capital = g.Where(x => x.Tipo == "abono_capital").Sum(x => x.Monto)
             })
             .OrderBy(x => x.Anio).ThenBy(x => x.Mes).ToList();
+        vm.PagosDeudasPorMes = pagosDeuda
+            .Where(x => x.Fecha.Date >= inicioSerie && x.Fecha.Date <= finSerie)
+            .GroupBy(x => new { x.Fecha.Year, x.Fecha.Month })
+            .Select(g => new CobroMesVm
+            {
+                Anio = g.Key.Year,
+                Mes = g.Key.Month,
+                Intereses = g.Sum(x => x.Interes + x.Costos),
+                Capital = g.Sum(x => x.Capital)
+            })
+            .OrderBy(x => x.Anio).ThenBy(x => x.Mes).ToList();
 
         var paleta = new[] { "#0d6efd", "#fb8c00", "#2e7d32", "#d81b60", "#5e35b1", "#00897b", "#c62828", "#3949ab", "#fdd835", "#8e24aa" };
         vm.SaldoPorPersona = vm.Activos
@@ -86,6 +104,13 @@ public class PrestamosController : BaseController
             .OrderByDescending(x => x.Total).ToList();
         for (var i = 0; i < vm.SaldoPorPersona.Count; i++)
             vm.SaldoPorPersona[i].Color = paleta[i % paleta.Length];
+        vm.SaldoPorAcreedor = vm.DeudasActivas
+            .GroupBy(p => p.Acreedor)
+            .Select(g => new GastoCategoriaVm { Nombre = g.Key, Total = g.Sum(x => x.SaldoCapital) })
+            .Where(x => x.Total > 0)
+            .OrderByDescending(x => x.Total).ToList();
+        for (var i = 0; i < vm.SaldoPorAcreedor.Count; i++)
+            vm.SaldoPorAcreedor[i].Color = paleta[(i + 3) % paleta.Length];
 
         return View(vm);
     }
@@ -143,6 +168,7 @@ public class PrestamosController : BaseController
                   RETURNING id",
                 new { UsuarioId, personaId, fecha, capitalBase = conversion.MontoBase, capitalOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, tasaMensual, diaPagoInteres, fechaPagoCapital, notas });
             TempData["Ok"] = "Prestamo registrado.";
+            _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Crear", "prestamos", nuevoId, $"Prestamo a persona {personaId} creado.");
             return RedirectToAction("Detalle", new { id = nuevoId });
         }
 
@@ -154,6 +180,7 @@ public class PrestamosController : BaseController
             new { id, UsuarioId, personaId, fecha, capitalBase = conversion.MontoBase, capitalOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, tasaMensual, diaPagoInteres, fechaPagoCapital, notas });
         ActualizarEstado(con, id);
         TempData["Ok"] = "Prestamo actualizado.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Actualizar", "prestamos", id, "Prestamo actualizado.");
         return RedirectToAction("Detalle", new { id });
     }
 
@@ -211,6 +238,7 @@ public class PrestamosController : BaseController
 
         ActualizarEstado(con, prestamoId);
         TempData["Ok"] = tipo == "abono_capital" ? "Abono a capital registrado." : "Pago de interes registrado.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Registrar pago", "prestamo_pagos", prestamoId, $"{tipo} por {monto:N0} registrado.");
         return RedirectToAction("Detalle", new { id = prestamoId });
     }
 
@@ -222,6 +250,7 @@ public class PrestamosController : BaseController
         con.Execute("DELETE FROM prestamo_pagos WHERE id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
         ActualizarEstado(con, prestamoId);
         TempData["Ok"] = "Pago eliminado del historial.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Eliminar pago", "prestamo_pagos", id, "Pago de prestamo eliminado.");
         return RedirectToAction("Detalle", new { id = prestamoId });
     }
 
@@ -233,6 +262,7 @@ public class PrestamosController : BaseController
         con.Execute("DELETE FROM prestamo_pagos WHERE prestamo_id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
         con.Execute("DELETE FROM prestamos WHERE id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
         TempData["Ok"] = "Prestamo eliminado con todo su historial.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Eliminar", "prestamos", id, "Prestamo eliminado con historial.");
         return RedirectToAction("Index");
     }
 
@@ -289,6 +319,37 @@ public class PrestamosController : BaseController
                   THEN 'pagado' ELSE 'activo' END
               WHERE id=@prestamoId AND usuario_id=@UsuarioId",
             new { prestamoId, UsuarioId });
+    }
+
+    private List<Deuda> ConsultarDeudasTablero(System.Data.IDbConnection con)
+    {
+        return con.Query<Deuda>(
+            @"SELECT id,usuario_id AS UsuarioId,acreedor,tipo,fecha_desembolso AS FechaDesembolso,
+                     capital_inicial AS CapitalInicial,capital_original AS CapitalOriginal,
+                     moneda_codigo AS MonedaCodigo,tasa_conversion AS TasaConversion,moneda_base_codigo AS MonedaBaseCodigo,
+                     tasa,periodo_tasa AS PeriodoTasa,sistema_pago AS SistemaPago,plazo_meses AS PlazoMeses,
+                     dia_pago AS DiaPago,proxima_fecha_pago AS ProximaFechaPago,cuota_estimada AS CuotaEstimada,
+                     estado
+              FROM deudas WHERE usuario_id=@UsuarioId
+              ORDER BY estado, proxima_fecha_pago NULLS LAST, fecha_desembolso DESC",
+            new { UsuarioId }).ToList();
+    }
+
+    private List<DeudaPago> ConsultarPagosDeudaTablero(System.Data.IDbConnection con)
+    {
+        return con.Query<DeudaPago>(
+            @"SELECT id,usuario_id AS UsuarioId,deuda_id AS DeudaId,fecha,monto_total AS MontoTotal,
+                     capital,interes,costos
+              FROM deuda_pagos WHERE usuario_id=@UsuarioId",
+            new { UsuarioId }).ToList();
+    }
+
+    private static void CompletarCalculosDeuda(Deuda deuda, IEnumerable<DeudaPago> pagos)
+    {
+        deuda.CapitalPagado = pagos.Sum(x => x.Capital);
+        deuda.InteresPagado = pagos.Sum(x => x.Interes);
+        deuda.CostosPagados = pagos.Sum(x => x.Costos);
+        deuda.TotalPagado = pagos.Sum(x => x.MontoTotal);
     }
 
     private ConversionMoneda Convertir(decimal monto, string monedaCodigo, DateTime fecha, decimal? tasaConversion)

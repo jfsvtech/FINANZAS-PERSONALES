@@ -1,0 +1,30 @@
+@{
+    ViewBag.Titulo = "Verificacion de seguridad";
+    Layout = "_Layout";
+}
+<div class="login-shell">
+    <div class="col-12 col-sm-8 col-md-5 col-lg-4">
+        <div class="card login-card">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <span class="login-brand"><i class="bi bi-shield-lock"></i></span>
+                    <h4 class="mt-3">Codigo de seguridad</h4>
+                    <p class="text-muted small">Enviamos un codigo de 6 digitos a @ViewBag.Email.</p>
+                </div>
+                @if (ViewBag.Error != null)
+                {
+                    <div class="alert alert-danger py-2 small">@ViewBag.Error</div>
+                }
+                <form method="post" asp-action="Verificar2Fa">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="email" value="@ViewBag.Email" />
+                    <input type="hidden" name="recordarme" value="@ViewBag.Recordarme" />
+                    <label class="form-label">Codigo</label>
+                    <input name="codigo" class="form-control form-control-lg text-center" inputmode="numeric" maxlength="6" required autofocus />
+                    <button class="btn btn-primary btn-lg w-100 mt-3"><i class="bi bi-check2-circle"></i> Verificar</button>
+                </form>
+                <a class="btn btn-link w-100 mt-2" asp-action="Login">Volver al inicio</a>
+            </div>
+        </div>
+    </div>
+</div>

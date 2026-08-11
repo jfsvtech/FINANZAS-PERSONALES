@@ -63,7 +63,7 @@
                 <button class="sidebar-group-toggle" type="button"><i class="bi bi-wallet2"></i><span>Gestion de Finanzas</span><i class="bi bi-chevron-down group-chevron"></i></button>
                 <div class="sidebar-group-items">
                     <a class="@(controladorActual == "Dashboard" ? "active" : "")" asp-controller="Dashboard" asp-action="Index"><i class="bi bi-bar-chart-line"></i><span>Analisis financiero</span></a>
-                    <a class="@(controladorActual == "Asistente" && ViewContext.RouteData.Values["action"]?.ToString() == "Registro" ? "active premium-link" : "premium-link")" asp-controller="Asistente" asp-action="Registro"><i class="bi bi-mic"></i><span>Registro rapido</span></a>
+                    @if (puedeAsistente) { <a class="@(controladorActual == "Asistente" && ViewContext.RouteData.Values["action"]?.ToString() == "Registro" ? "active premium-link" : "premium-link")" asp-controller="Asistente" asp-action="Registro"><i class="bi bi-mic"></i><span>Registro rapido</span></a> }
                     <a class="@(controladorActual == "Movimientos" ? "active" : "")" asp-controller="Movimientos" asp-action="Index"><i class="bi bi-arrow-left-right"></i><span>Movimientos</span></a>
                     <a class="@(controladorActual == "Metas" ? "active premium-link" : "premium-link")" asp-controller="Metas" asp-action="Index"><i class="bi bi-flag"></i><span>Metas de ahorro</span></a>
                     <a class="@(controladorActual == "Periodicos" ? "active" : "")" asp-controller="Periodicos" asp-action="Index"><i class="bi bi-arrow-repeat"></i><span>Recurrentes</span></a>
@@ -82,7 +82,8 @@
                 <div class="sidebar-group-items">
                     <a class="@(controladorActual == "Prestamos" && ViewContext.RouteData.Values["action"]?.ToString() == "Tablero" ? "active" : "")" asp-controller="Prestamos" asp-action="Tablero"><i class="bi bi-graph-up-arrow"></i><span>Analisis de prestamos</span></a>
                     <a class="@(controladorActual == "Prestamos" && ViewContext.RouteData.Values["action"]?.ToString() != "Tablero" ? "active" : "")" asp-controller="Prestamos" asp-action="Index"><i class="bi bi-cash-stack"></i><span>Por cobrar</span></a>
-                    <a class="@(controladorActual == "Deudas" ? "active" : "")" asp-controller="Deudas" asp-action="Index"><i class="bi bi-building-lock"></i><span>Por pagar</span></a>
+                    <a class="@(controladorActual == "Deudas" && ViewContext.RouteData.Values["action"]?.ToString() != "Estrategia" ? "active" : "")" asp-controller="Deudas" asp-action="Index"><i class="bi bi-building-lock"></i><span>Por pagar</span></a>
+                    <a class="@(controladorActual == "Deudas" && ViewContext.RouteData.Values["action"]?.ToString() == "Estrategia" ? "active premium-link" : "premium-link")" asp-controller="Deudas" asp-action="Estrategia"><i class="bi bi-signpost-split"></i><span>Estrategia de deudas</span></a>
                     <a class="@(controladorActual == "Personas" ? "active" : "")" asp-controller="Personas" asp-action="Index"><i class="bi bi-person-rolodex"></i><span>Personas</span></a>
                 </div>
             </div>
@@ -129,6 +130,7 @@
                 <button class="user-menu" data-bs-toggle="dropdown"><span class="user-avatar">@User.Identity!.Name![0]</span><span class="user-copy"><strong>@User.Identity.Name</strong><small>Mi cuenta</small></span><i class="bi bi-chevron-down"></i></button>
                 <ul class="dropdown-menu dropdown-menu-end shadow border-0">
                     <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalPreferencias"><i class="bi bi-translate"></i> Preferencias</a></li>
+                    <li><a class="dropdown-item" asp-controller="Acceso" asp-action="Seguridad"><i class="bi bi-shield-lock"></i> Seguridad</a></li>
                     <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalCambiarClave"><i class="bi bi-key"></i> Cambiar clave</a></li>
                     @if (esAdmin) { <li><a class="dropdown-item" asp-controller="Configuracion" asp-action="Integraciones"><i class="bi bi-plug"></i> Integraciones</a></li> }
                     <li><hr class="dropdown-divider" /></li>
@@ -152,7 +154,7 @@
             }
             @if (puedePrestamos)
             {
-                <div class="sidebar-group"><button class="sidebar-group-toggle" type="button"><i class="bi bi-cash-stack"></i><span>Gestion de Prestamos</span><i class="bi bi-chevron-down group-chevron"></i></button><div class="sidebar-group-items"><a asp-controller="Prestamos" asp-action="Tablero"><i class="bi bi-graph-up-arrow"></i> Analisis de prestamos</a><a asp-controller="Prestamos" asp-action="Index"><i class="bi bi-cash-stack"></i> Por cobrar</a><a asp-controller="Deudas" asp-action="Index"><i class="bi bi-building-lock"></i> Por pagar</a><a asp-controller="Personas" asp-action="Index"><i class="bi bi-person-rolodex"></i> Personas</a></div></div>
+                <div class="sidebar-group"><button class="sidebar-group-toggle" type="button"><i class="bi bi-cash-stack"></i><span>Gestion de Prestamos</span><i class="bi bi-chevron-down group-chevron"></i></button><div class="sidebar-group-items"><a asp-controller="Prestamos" asp-action="Tablero"><i class="bi bi-graph-up-arrow"></i> Analisis de prestamos</a><a asp-controller="Prestamos" asp-action="Index"><i class="bi bi-cash-stack"></i> Por cobrar</a><a asp-controller="Deudas" asp-action="Index"><i class="bi bi-building-lock"></i> Por pagar</a><a asp-controller="Deudas" asp-action="Estrategia"><i class="bi bi-signpost-split"></i> Estrategia de deudas</a><a asp-controller="Personas" asp-action="Index"><i class="bi bi-person-rolodex"></i> Personas</a></div></div>
             }
             @if (puedeInversiones)
             {
@@ -222,7 +224,7 @@
         <a class="@(controladorActual == "Inicio" ? "active" : "")" asp-controller="Inicio" asp-action="Index"><i class="bi bi-house-door"></i><span>Inicio</span></a>
         @if (puedeGastos) { <a class="@(esGastos || controladorActual is "Metas" or "Cuentas" or "Categorias" ? "active" : "")" asp-controller="Dashboard" asp-action="Index"><i class="bi bi-wallet2"></i><span>Finanzas</span></a> }
         @if (puedeGastos) { <a class="mobile-add" asp-controller="Movimientos" asp-action="Index" asp-route-nuevo="true"><i class="bi bi-plus-lg"></i><span>Registrar</span></a> }
-        @if (puedePrestamos) { <a class="@(controladorActual is "Prestamos" or "Deudas" ? "active" : "")" asp-controller="Prestamos" asp-action="Index"><i class="bi bi-cash-stack"></i><span>Prestamos</span></a> }
+        @if (puedePrestamos) { <a class="@(controladorActual is "Prestamos" or "Deudas" ? "active" : "")" asp-controller="Prestamos" asp-action="Tablero"><i class="bi bi-cash-stack"></i><span>Creditos</span></a> }
         <button type="button" data-bs-toggle="offcanvas" data-bs-target="#menuMovil"><i class="bi bi-grid"></i><span>Menu</span></button>
     </nav>
 }

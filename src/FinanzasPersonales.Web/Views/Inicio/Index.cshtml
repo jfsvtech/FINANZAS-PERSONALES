@@ -27,6 +27,9 @@
         <a class="btn btn-outline-light" asp-controller="Prestamos" asp-action="Index" asp-route-nuevo="true">
             <i class="bi bi-cash-stack"></i> Nuevo prestamo
         </a>
+        <a class="btn btn-outline-light" asp-controller="Deudas" asp-action="Index" asp-route-nuevo="true">
+            <i class="bi bi-building-lock"></i> Nueva deuda
+        </a>
         }
     </div>
 </div>
@@ -161,27 +164,39 @@
                         <span class="fw-bold text-success">@Model.InteresMensualEsperado.ToString("C0")</span>
                     </li>
                     <li class="list-group-item d-flex justify-content-between px-0">
-                        <span class="text-muted">Prestamos activos</span>
-                        <span class="fw-bold">@Model.PrestamosActivos</span>
+                        <span class="text-muted">Saldo por pagar</span>
+                        <span class="fw-bold text-danger">@Model.SaldoPorPagar.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Posicion neta crediticia</span>
+                        <span class="fw-bold @(Model.PosicionCrediticiaNeta >= 0 ? "text-success" : "text-danger")">@Model.PosicionCrediticiaNeta.ToString("C0")</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Prestamos / deudas activas</span>
+                        <span class="fw-bold">@Model.PrestamosActivos / @Model.DeudasActivas</span>
                     </li>
                 </ul>
-                @if (Model.PrestamosAtrasados > 0)
+                @if (Model.PrestamosAtrasados > 0 || Model.DeudasVencidas > 0)
                 {
                     <a asp-controller="Prestamos" asp-action="Tablero" class="d-block alert alert-danger py-2 small text-decoration-none">
-                        <i class="bi bi-exclamation-triangle"></i> <strong>@Model.PrestamosAtrasados</strong> prestamo(s) con interes atrasado
+                        <i class="bi bi-exclamation-triangle"></i>
+                        @if (Model.PrestamosAtrasados > 0) { <span><strong>@Model.PrestamosAtrasados</strong> cobro(s) atrasado(s). </span> }
+                        @if (Model.DeudasVencidas > 0) { <span><strong>@Model.DeudasVencidas</strong> deuda(s) vencida(s).</span> }
                     </a>
                 }
                 <div class="d-flex gap-2">
                     <a class="btn btn-success flex-fill" asp-controller="Prestamos" asp-action="Tablero">
-                        <i class="bi bi-graph-up-arrow"></i> Tablero
+                        <i class="bi bi-graph-up-arrow"></i> Analisis
                     </a>
                     <a class="btn btn-outline-success flex-fill" asp-controller="Prestamos" asp-action="Index">
-                        <i class="bi bi-cash-stack"></i> Prestamos
+                        <i class="bi bi-cash-stack"></i> Por cobrar
                     </a>
                 </div>
                 <div class="accesos-modulo accesos-prestamos mt-3 pt-3 border-top">
                     <span class="text-muted small me-1">Accesos:</span>
                     <a asp-controller="Prestamos" asp-action="Index" asp-route-nuevo="true"><i class="bi bi-plus-circle"></i> Nuevo prestamo</a>
+                    <a asp-controller="Deudas" asp-action="Index" asp-route-nuevo="true"><i class="bi bi-building-lock"></i> Nueva deuda</a>
+                    <a asp-controller="Deudas" asp-action="Index"><i class="bi bi-list-check"></i> Por pagar</a>
                     <a asp-controller="Personas" asp-action="Index"><i class="bi bi-person-rolodex"></i> Personas</a>
                 </div>
             </div>

@@ -1,6 +1,6 @@
 @model PrestamosTableroVm
 @{
-    ViewBag.Titulo = "Tablero de prestamos - Finanzas Personales";
+    ViewBag.Titulo = "Analisis crediticio - Finanzas Personales";
     var hoy = DateTime.Today;
     var inicioAnio = new DateTime(hoy.Year, 1, 1);
     var inicioTresMeses = hoy.AddMonths(-3).Date;
@@ -12,10 +12,11 @@
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h4 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Tablero de prestamos</h4>
+    <h4 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Analisis crediticio</h4>
     <div class="d-flex gap-2">
         <a class="btn btn-outline-secondary btn-sm" asp-controller="Personas" asp-action="Index"><i class="bi bi-person-rolodex"></i> Personas</a>
-        <a class="btn btn-primary btn-sm" asp-action="Index"><i class="bi bi-cash-stack"></i> Ver prestamos</a>
+        <a class="btn btn-outline-primary btn-sm" asp-action="Index"><i class="bi bi-cash-stack"></i> Por cobrar</a>
+        <a class="btn btn-primary btn-sm" asp-controller="Deudas" asp-action="Index"><i class="bi bi-building-lock"></i> Por pagar</a>
     </div>
 </div>
 
@@ -74,34 +75,36 @@
 
 <div class="row g-2 mb-3 text-center">
     <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
-        <div class="small text-muted">Prestamos activos</div>
-        <div class="fw-bold fs-5">@Model.CantidadActivos</div>
-        <div class="text-muted" style="font-size:.75rem;">@Model.CantidadPagados pagados</div>
+        <div class="small text-muted">Posicion neta</div>
+        <div class="fw-bold fs-5 @(Model.PosicionNeta >= 0 ? "text-success" : "text-danger")">@Model.PosicionNeta.ToString("C0")</div>
+        <div class="text-muted" style="font-size:.75rem;">por cobrar - por pagar</div>
     </div></div></div>
     <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
-        <div class="small text-muted">Capital prestado</div>
-        <div class="fw-bold">@Model.TotalPrestadoActivo.ToString("C0")</div>
+        <div class="small text-muted">Por cobrar activos</div>
+        <div class="fw-bold fs-5">@Model.CantidadActivos</div>
+        <div class="text-muted" style="font-size:.75rem;">@Model.CantidadPagados cerrados</div>
+    </div></div></div>
+    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+        <div class="small text-muted">Por pagar activas</div>
+        <div class="fw-bold fs-5">@Model.CantidadDeudasActivas</div>
+        <div class="text-muted" style="font-size:.75rem;">@Model.CantidadDeudasPagadas pagadas</div>
     </div></div></div>
     <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
         <div class="small text-muted">Saldo por cobrar</div>
         <div class="fw-bold text-primary">@Model.TotalSaldoCapital.ToString("C0")</div>
     </div></div></div>
     <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
-        <div class="small text-muted">Interes pendiente</div>
-        <div class="fw-bold @(Model.TotalInteresPendiente > 0 ? "text-warning" : "text-success")">@Model.TotalInteresPendiente.ToString("C0")</div>
+        <div class="small text-muted">Saldo por pagar</div>
+        <div class="fw-bold text-danger">@Model.TotalSaldoDeudas.ToString("C0")</div>
     </div></div></div>
     <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
-        <div class="small text-muted">Interes mensual esperado</div>
-        <div class="fw-bold text-success">@Model.InteresMensualEsperado.ToString("C0")</div>
-    </div></div></div>
-    <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
-        <div class="small text-muted">Interes cobrado historico</div>
-        <div class="fw-bold text-success">@Model.TotalInteresCobrado.ToString("C0")</div>
+        <div class="small text-muted">Interes neto mensual</div>
+        <div class="fw-bold @((Model.InteresMensualEsperado-Model.InteresDeudasMensual)>=0?"text-success":"text-danger")">@((Model.InteresMensualEsperado-Model.InteresDeudasMensual).ToString("C0"))</div>
     </div></div></div>
 </div>
 
 <div class="row g-3 mb-3">
-    <div class="col-12 col-lg-5">
+    <div class="col-12 col-lg-6">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-white fw-bold"><i class="bi bi-pie-chart"></i> Saldo por cobrar por persona</div>
             <div class="card-body">
@@ -116,11 +119,37 @@
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-7">
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-pie-chart"></i> Saldo por pagar por acreedor</div>
+            <div class="card-body">
+                @if (Model.SaldoPorAcreedor.Any())
+                {
+                    <canvas id="graficaAcreedores" style="max-height:300px;"></canvas>
+                }
+                else
+                {
+                    <p class="text-muted text-center my-5">No hay deudas activas con saldo.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-lg-6">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-white fw-bold"><i class="bi bi-bar-chart"></i> @tituloCobros</div>
             <div class="card-body">
                 <canvas id="graficaCobros" style="max-height:300px;"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-bar-chart"></i> Pagos de deudas del periodo</div>
+            <div class="card-body">
+                <canvas id="graficaPagosDeudas" style="max-height:300px;"></canvas>
             </div>
         </div>
     </div>
@@ -171,6 +200,40 @@
     </div>
 </div>
 
+<div class="card border-0 shadow-sm mt-3">
+    <div class="card-header bg-white fw-bold"><i class="bi bi-building-lock"></i> Estado de deudas por pagar</div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Acreedor</th><th class="text-end">Saldo capital</th>
+                    <th class="d-none d-md-table-cell text-end">Interes mensual</th>
+                    <th class="d-none d-md-table-cell">Proximo pago</th>
+                    <th>Estado</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var d in Model.DeudasActivas.OrderByDescending(x => x.SaldoCapital))
+            {
+                var vencida = d.ProximaFechaPago.HasValue && d.ProximaFechaPago.Value.Date < hoy;
+                <tr class="@(vencida ? "table-warning" : "")">
+                    <td><i class="bi bi-building me-1"></i> @d.Acreedor <small class="d-block text-muted">@d.TipoTexto</small></td>
+                    <td class="text-end fw-bold text-danger">@d.SaldoCapital.ToString("C0")</td>
+                    <td class="d-none d-md-table-cell text-end">@d.InteresMensualEstimado.ToString("C0") <span class="text-muted small">(@d.TasaMensualEquivalente.ToString("0.##")%)</span></td>
+                    <td class="d-none d-md-table-cell @(vencida ? "text-danger fw-bold" : "")">@(d.ProximaFechaPago?.ToString("dd MMM yyyy") ?? "-")</td>
+                    <td><span class="badge @(d.Estado == "vencida" || vencida ? "text-bg-warning" : "text-bg-primary")">@d.Estado</span></td>
+                    <td class="text-end"><a class="btn btn-sm btn-primary" asp-controller="Deudas" asp-action="Detalle" asp-route-id="@d.Id"><i class="bi bi-clipboard-data"></i> Control</a></td>
+                </tr>
+            }
+            @if (!Model.DeudasActivas.Any())
+            {
+                <tr><td colspan="6" class="text-center text-muted py-4">No tienes deudas por pagar activas.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
 @section Scripts {
 <script>
     const tc = themeColors();
@@ -191,6 +254,23 @@
             }
         });
     }
+    const porAcreedor = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.SaldoPorAcreedor.Select(x => new { nombre = x.Nombre, color = x.Color, total = x.Total })));
+    if (porAcreedor.length > 0) {
+        new Chart(document.getElementById('graficaAcreedores'), {
+            type: 'doughnut',
+            data: {
+                labels: porAcreedor.map(x => x.nombre),
+                datasets: [{ data: porAcreedor.map(x => x.total), backgroundColor: porAcreedor.map(x => x.color) }]
+            },
+            options: {
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: { callbacks: { label: ctx => ' $ ' + ctx.parsed.toLocaleString('es-CO') } }
+                }
+            }
+        });
+    }
 
     const cobros = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
         Model.CobrosPorMes.Select(x => new { etiqueta = x.Etiqueta, intereses = x.Intereses, capital = x.Capital })));
@@ -201,6 +281,25 @@
             datasets: [
                 { label: 'Intereses cobrados', data: cobros.map(x => x.intereses), backgroundColor: tc.gold },
                 { label: 'Capital recuperado', data: cobros.map(x => x.capital), backgroundColor: tc.purple }
+            ]
+        },
+        options: {
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': $ ' + ctx.parsed.y.toLocaleString('es-CO') } }
+            },
+            scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: v => '$ ' + v.toLocaleString('es-CO') } } }
+        }
+    });
+    const pagosDeudas = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.PagosDeudasPorMes.Select(x => new { etiqueta = x.Etiqueta, intereses = x.Intereses, capital = x.Capital })));
+    new Chart(document.getElementById('graficaPagosDeudas'), {
+        type: 'bar',
+        data: {
+            labels: pagosDeudas.map(x => x.etiqueta),
+            datasets: [
+                { label: 'Intereses y costos pagados', data: pagosDeudas.map(x => x.intereses), backgroundColor: tc.gold },
+                { label: 'Capital pagado', data: pagosDeudas.map(x => x.capital), backgroundColor: '#E15B64' }
             ]
         },
         options: {
