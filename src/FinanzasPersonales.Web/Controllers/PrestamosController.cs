@@ -33,6 +33,7 @@ public class PrestamosController : BaseController
             Monedas = _preferencias.Monedas(),
             MonedaBase = pref.MonedaCodigo,
             Prestamos = ConsultarPrestamos(con, personaId: personaId, estado: estado, desde: desde, hasta: hasta),
+            Cuentas = CuentasActivas(con),
             Personas = con.Query<Persona>(
                 @"SELECT id, nombre FROM personas WHERE usuario_id=@UsuarioId AND activo ORDER BY nombre",
                 new { UsuarioId }).ToList()
@@ -124,13 +125,14 @@ public class PrestamosController : BaseController
         var pagos = ConsultarPagos(con, id);
         CalculoPrestamos.CompletarCalculos(prestamo, pagos);
         var pref = _preferencias.Obtener(UsuarioId);
-        return View(new PrestamoDetalleVm { Prestamo = prestamo, Pagos = pagos, Monedas = _preferencias.Monedas(), MonedaBase = pref.MonedaCodigo });
+        return View(new PrestamoDetalleVm { Prestamo = prestamo, Pagos = pagos, Cuentas = CuentasActivas(con), Monedas = _preferencias.Monedas(), MonedaBase = pref.MonedaCodigo });
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public IActionResult Guardar(int id, int personaId, DateTime fecha, decimal capital, decimal tasaMensual,
-        int? diaPagoInteres, DateTime? fechaPagoCapital, string? notas, string monedaCodigo = "COP", decimal? tasaConversion = null)
+        int? diaPagoInteres, DateTime? fechaPagoCapital, int? cuentaOrigenId, int? cuentaCobroId,
+        string? notas, string monedaCodigo = "COP", decimal? tasaConversion = null)
     {
         if (capital <= 0 || tasaMensual < 0)
         {
@@ -154,6 +156,11 @@ public class PrestamosController : BaseController
             TempData["Error"] = "Primero crea la persona en el modulo de Personas.";
             return RedirectToAction("Index");
         }
+        if (cuentaOrigenId.HasValue && !CuentaEsMia(con, cuentaOrigenId.Value)) return Forbid();
+        if (cuentaCobroId.HasValue && !CuentaEsMia(con, cuentaCobroId.Value)) return Forbid();
+        var personaNombre = con.ExecuteScalar<string>(
+            "SELECT nombre FROM personas WHERE id=@personaId AND usuario_id=@UsuarioId",
+            new { personaId, UsuarioId }) ?? $"persona {personaId}";
 
         ConversionMoneda conversion;
         try { conversion = Convertir(capital, monedaCodigo, fecha, tasaConversion); }
@@ -162,11 +169,16 @@ public class PrestamosController : BaseController
         {
             var nuevoId = con.ExecuteScalar<int>(
                 @"INSERT INTO prestamos (usuario_id, persona_id, fecha, capital, capital_original, moneda_codigo, tasa_conversion,
-                         tasa_mensual, dia_pago_interes, fecha_pago_capital, notas)
+                         tasa_mensual, dia_pago_interes, fecha_pago_capital, cuenta_origen_id, cuenta_cobro_id, notas)
                   VALUES (@UsuarioId, @personaId, @fecha, @capitalBase, @capitalOriginal, @monedaCodigo, @tasa,
-                         @tasaMensual, @diaPagoInteres, @fechaPagoCapital, @notas)
+                         @tasaMensual, @diaPagoInteres, @fechaPagoCapital, @cuentaOrigenId, @cuentaCobroId, @notas)
                   RETURNING id",
-                new { UsuarioId, personaId, fecha, capitalBase = conversion.MontoBase, capitalOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, tasaMensual, diaPagoInteres, fechaPagoCapital, notas });
+                new { UsuarioId, personaId, fecha, capitalBase = conversion.MontoBase, capitalOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, tasaMensual, diaPagoInteres, fechaPagoCapital, cuentaOrigenId, cuentaCobroId, notas });
+            if (cuentaOrigenId.HasValue)
+            {
+                var movimientoId = CrearMovimiento(con, fecha, "gasto", cuentaOrigenId.Value, $"Prestamo entregado: {personaNombre}", conversion);
+                con.Execute("UPDATE prestamos SET movimiento_desembolso_id=@movimientoId WHERE id=@nuevoId AND usuario_id=@UsuarioId", new { movimientoId, nuevoId, UsuarioId });
+            }
             TempData["Ok"] = "Prestamo registrado.";
             _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Crear", "prestamos", nuevoId, $"Prestamo a persona {personaId} creado.");
             return RedirectToAction("Detalle", new { id = nuevoId });
@@ -175,9 +187,11 @@ public class PrestamosController : BaseController
         con.Execute(
             @"UPDATE prestamos SET persona_id=@personaId, fecha=@fecha, capital=@capitalBase, capital_original=@capitalOriginal,
                      moneda_codigo=@monedaCodigo, tasa_conversion=@tasa, tasa_mensual=@tasaMensual,
-                     dia_pago_interes=@diaPagoInteres, fecha_pago_capital=@fechaPagoCapital, notas=@notas
+                     dia_pago_interes=@diaPagoInteres, fecha_pago_capital=@fechaPagoCapital,
+                     cuenta_origen_id=@cuentaOrigenId, cuenta_cobro_id=@cuentaCobroId, notas=@notas
               WHERE id=@id AND usuario_id=@UsuarioId",
-            new { id, UsuarioId, personaId, fecha, capitalBase = conversion.MontoBase, capitalOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, tasaMensual, diaPagoInteres, fechaPagoCapital, notas });
+            new { id, UsuarioId, personaId, fecha, capitalBase = conversion.MontoBase, capitalOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, tasaMensual, diaPagoInteres, fechaPagoCapital, cuentaOrigenId, cuentaCobroId, notas });
+        SincronizarMovimientoPrestamo(con, id, cuentaOrigenId, fecha, $"Prestamo entregado: {personaNombre}", conversion);
         ActualizarEstado(con, id);
         TempData["Ok"] = "Prestamo actualizado.";
         _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Actualizar", "prestamos", id, "Prestamo actualizado.");
@@ -186,7 +200,7 @@ public class PrestamosController : BaseController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult RegistrarPago(int prestamoId, DateTime fecha, string tipo, decimal monto, string? notas,
+    public IActionResult RegistrarPago(int prestamoId, DateTime fecha, string tipo, decimal monto, int? cuentaId, string? notas,
         string efectoAbono = "no_aplica", bool esExtraordinario = false, string monedaCodigo = "COP", decimal? tasaConversion = null)
     {
         if (monto <= 0 || tipo is not ("abono_capital" or "pago_interes")) return BadRequest();
@@ -194,6 +208,8 @@ public class PrestamosController : BaseController
         using var con = _db.Abrir();
         var prestamo = ConsultarPrestamos(con, prestamoId).FirstOrDefault();
         if (prestamo == null) return NotFound();
+        cuentaId ??= prestamo.CuentaCobroId;
+        if (cuentaId.HasValue && !CuentaEsMia(con, cuentaId.Value)) return Forbid();
         if (tipo == "pago_interes" && prestamo.TasaMensual <= 0)
         {
             TempData["Error"] = "Este prestamo no tiene intereses; solo permite abonos a capital.";
@@ -229,12 +245,18 @@ public class PrestamosController : BaseController
             esExtraordinario = false;
         }
 
-        con.Execute(
+        var pagoId = con.ExecuteScalar<int>(
             @"INSERT INTO prestamo_pagos (usuario_id, prestamo_id, fecha, tipo, monto, monto_original, moneda_codigo,
-                         tasa_conversion, moneda_base_codigo, efecto_abono, es_extraordinario, notas)
+                         tasa_conversion, moneda_base_codigo, cuenta_id, efecto_abono, es_extraordinario, notas)
               VALUES (@UsuarioId, @prestamoId, @fecha, @tipo, @montoBase, @montoOriginal, @monedaCodigo,
-                         @tasa, @monedaBase, @efectoAbono, @esExtraordinario, @notas)",
-            new { UsuarioId, prestamoId, fecha, tipo, montoBase = conversion.MontoBase, montoOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, monedaBase = conversion.MonedaDestino, efectoAbono, esExtraordinario, notas });
+                         @tasa, @monedaBase, @cuentaId, @efectoAbono, @esExtraordinario, @notas)
+              RETURNING id",
+            new { UsuarioId, prestamoId, fecha, tipo, montoBase = conversion.MontoBase, montoOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, monedaBase = conversion.MonedaDestino, cuentaId, efectoAbono, esExtraordinario, notas });
+        if (cuentaId.HasValue)
+        {
+            var movimientoId = CrearMovimiento(con, fecha, "ingreso", cuentaId.Value, $"{(tipo == "abono_capital" ? "Abono capital" : "Pago interes")} prestamo: {prestamo.PersonaNombre}", conversion);
+            con.Execute("UPDATE prestamo_pagos SET movimiento_id=@movimientoId WHERE id=@pagoId AND usuario_id=@UsuarioId", new { movimientoId, pagoId, UsuarioId });
+        }
 
         ActualizarEstado(con, prestamoId);
         TempData["Ok"] = tipo == "abono_capital" ? "Abono a capital registrado." : "Pago de interes registrado.";
@@ -247,7 +269,9 @@ public class PrestamosController : BaseController
     public IActionResult EliminarPago(int id, int prestamoId)
     {
         using var con = _db.Abrir();
+        var movimientoId = con.ExecuteScalar<int?>("SELECT movimiento_id FROM prestamo_pagos WHERE id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
         con.Execute("DELETE FROM prestamo_pagos WHERE id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
+        EliminarMovimiento(con, movimientoId);
         ActualizarEstado(con, prestamoId);
         TempData["Ok"] = "Pago eliminado del historial.";
         _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Eliminar pago", "prestamo_pagos", id, "Pago de prestamo eliminado.");
@@ -259,8 +283,15 @@ public class PrestamosController : BaseController
     public IActionResult Eliminar(int id)
     {
         using var con = _db.Abrir();
+        var movimientos = con.Query<int>(
+            @"SELECT movimiento_id FROM prestamo_pagos WHERE prestamo_id=@id AND usuario_id=@UsuarioId AND movimiento_id IS NOT NULL
+              UNION
+              SELECT movimiento_desembolso_id FROM prestamos WHERE id=@id AND usuario_id=@UsuarioId AND movimiento_desembolso_id IS NOT NULL",
+            new { id, UsuarioId }).ToList();
         con.Execute("DELETE FROM prestamo_pagos WHERE prestamo_id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
         con.Execute("DELETE FROM prestamos WHERE id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
+        foreach (var movimientoId in movimientos)
+            EliminarMovimiento(con, movimientoId);
         TempData["Ok"] = "Prestamo eliminado con todo su historial.";
         _auditoria.Registrar(UsuarioId, UsuarioId, "Prestamos", "Eliminar", "prestamos", id, "Prestamo eliminado con historial.");
         return RedirectToAction("Index");
@@ -281,9 +312,13 @@ public class PrestamosController : BaseController
                            COALESCE(p.moneda_codigo,'COP') AS MonedaCodigo,
                            COALESCE(p.tasa_conversion,1) AS TasaConversion,
                            p.tasa_mensual AS TasaMensual, p.dia_pago_interes AS DiaPagoInteres,
-                           p.fecha_pago_capital AS FechaPagoCapital, p.notas, p.estado,
-                           pe.nombre AS PersonaNombre
+                           p.fecha_pago_capital AS FechaPagoCapital, p.cuenta_origen_id AS CuentaOrigenId,
+                           p.cuenta_cobro_id AS CuentaCobroId, p.movimiento_desembolso_id AS MovimientoDesembolsoId,
+                           p.notas, p.estado, pe.nombre AS PersonaNombre,
+                           co.nombre AS CuentaOrigenNombre, cc.nombre AS CuentaCobroNombre
                     FROM prestamos p JOIN personas pe ON pe.id = p.persona_id
+                    LEFT JOIN cuentas co ON co.id = p.cuenta_origen_id
+                    LEFT JOIN cuentas cc ON cc.id = p.cuenta_cobro_id
                     WHERE p.usuario_id=@UsuarioId";
         if (id.HasValue) sql += " AND p.id=@id";
         if (personaId.HasValue) sql += " AND p.persona_id=@personaId";
@@ -296,18 +331,100 @@ public class PrestamosController : BaseController
 
     private List<PrestamoPago> ConsultarPagos(System.Data.IDbConnection con, int? prestamoId = null)
     {
-        var sql = @"SELECT id, usuario_id AS UsuarioId, prestamo_id AS PrestamoId, fecha, tipo, monto,
-                           COALESCE(monto_original,monto) AS MontoOriginal,
-                           COALESCE(moneda_codigo,'COP') AS MonedaCodigo,
-                           COALESCE(tasa_conversion,1) AS TasaConversion,
-                           COALESCE(moneda_base_codigo,'COP') AS MonedaBaseCodigo,
-                           COALESCE(efecto_abono,'no_aplica') AS EfectoAbono,
-                           COALESCE(es_extraordinario,FALSE) AS EsExtraordinario,
-                           notas
-                    FROM prestamo_pagos WHERE usuario_id=@UsuarioId";
-        if (prestamoId.HasValue) sql += " AND prestamo_id=@prestamoId";
-        sql += " ORDER BY fecha DESC, id DESC";
+        var sql = @"SELECT pp.id, pp.usuario_id AS UsuarioId, pp.prestamo_id AS PrestamoId, pp.fecha, pp.tipo, pp.monto,
+                           COALESCE(pp.monto_original,pp.monto) AS MontoOriginal,
+                           COALESCE(pp.moneda_codigo,'COP') AS MonedaCodigo,
+                           COALESCE(pp.tasa_conversion,1) AS TasaConversion,
+                           COALESCE(pp.moneda_base_codigo,'COP') AS MonedaBaseCodigo,
+                           pp.cuenta_id AS CuentaId,
+                           pp.movimiento_id AS MovimientoId,
+                           c.nombre AS CuentaNombre,
+                           COALESCE(pp.efecto_abono,'no_aplica') AS EfectoAbono,
+                           COALESCE(pp.es_extraordinario,FALSE) AS EsExtraordinario,
+                           pp.notas
+                    FROM prestamo_pagos pp
+                    LEFT JOIN cuentas c ON c.id=pp.cuenta_id
+                    WHERE pp.usuario_id=@UsuarioId";
+        if (prestamoId.HasValue) sql += " AND pp.prestamo_id=@prestamoId";
+        sql += " ORDER BY pp.fecha DESC, pp.id DESC";
         return con.Query<PrestamoPago>(sql, new { UsuarioId, prestamoId }).ToList();
+    }
+
+    private List<Cuenta> CuentasActivas(System.Data.IDbConnection con) =>
+        con.Query<Cuenta>("SELECT id,nombre,tipo FROM cuentas WHERE usuario_id=@UsuarioId AND activo ORDER BY tipo,nombre", new { UsuarioId }).ToList();
+
+    private bool CuentaEsMia(System.Data.IDbConnection con, int id) =>
+        con.ExecuteScalar<int>("SELECT COUNT(*) FROM cuentas WHERE id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId }) > 0;
+
+    private int CrearMovimiento(System.Data.IDbConnection con, DateTime fecha, string tipo, int cuentaId, string descripcion, ConversionMoneda conversion)
+    {
+        return con.ExecuteScalar<int>(
+            @"INSERT INTO movimientos(usuario_id,fecha,tipo,cuenta_id,categoria_id,descripcion,monto,monto_original,moneda_codigo,tasa_conversion,moneda_base_codigo)
+              VALUES(@UsuarioId,@fecha,@tipo,@cuentaId,NULL,@descripcion,@monto,@montoOriginal,@monedaCodigo,@tasa,@monedaBase)
+              RETURNING id",
+            new
+            {
+                UsuarioId,
+                fecha,
+                tipo,
+                cuentaId,
+                descripcion,
+                monto = conversion.MontoBase,
+                montoOriginal = conversion.MontoOriginal,
+                monedaCodigo = conversion.MonedaOrigen,
+                tasa = conversion.Tasa,
+                monedaBase = conversion.MonedaDestino
+            });
+    }
+
+    private void SincronizarMovimientoPrestamo(System.Data.IDbConnection con, int prestamoId, int? cuentaOrigenId,
+        DateTime fecha, string descripcion, ConversionMoneda conversion)
+    {
+        var movimientoId = con.ExecuteScalar<int?>(
+            "SELECT movimiento_desembolso_id FROM prestamos WHERE id=@prestamoId AND usuario_id=@UsuarioId",
+            new { prestamoId, UsuarioId });
+
+        if (cuentaOrigenId.HasValue)
+        {
+            if (movimientoId.HasValue)
+            {
+                con.Execute(
+                    @"UPDATE movimientos SET fecha=@fecha,tipo='gasto',cuenta_id=@cuentaId,categoria_id=NULL,descripcion=@descripcion,
+                             monto=@monto,monto_original=@montoOriginal,moneda_codigo=@monedaCodigo,tasa_conversion=@tasa,moneda_base_codigo=@monedaBase
+                      WHERE id=@movimientoId AND usuario_id=@UsuarioId",
+                    new
+                    {
+                        UsuarioId,
+                        movimientoId,
+                        fecha,
+                        cuentaId = cuentaOrigenId.Value,
+                        descripcion,
+                        monto = conversion.MontoBase,
+                        montoOriginal = conversion.MontoOriginal,
+                        monedaCodigo = conversion.MonedaOrigen,
+                        tasa = conversion.Tasa,
+                        monedaBase = conversion.MonedaDestino
+                    });
+            }
+            else
+            {
+                var nuevoMovimientoId = CrearMovimiento(con, fecha, "gasto", cuentaOrigenId.Value, descripcion, conversion);
+                con.Execute("UPDATE prestamos SET movimiento_desembolso_id=@nuevoMovimientoId WHERE id=@prestamoId AND usuario_id=@UsuarioId",
+                    new { nuevoMovimientoId, prestamoId, UsuarioId });
+            }
+        }
+        else if (movimientoId.HasValue)
+        {
+            EliminarMovimiento(con, movimientoId);
+            con.Execute("UPDATE prestamos SET movimiento_desembolso_id=NULL WHERE id=@prestamoId AND usuario_id=@UsuarioId",
+                new { prestamoId, UsuarioId });
+        }
+    }
+
+    private void EliminarMovimiento(System.Data.IDbConnection con, int? movimientoId)
+    {
+        if (!movimientoId.HasValue) return;
+        con.Execute("DELETE FROM movimientos WHERE id=@movimientoId AND usuario_id=@UsuarioId", new { movimientoId, UsuarioId });
     }
 
     private void ActualizarEstado(System.Data.IDbConnection con, int prestamoId)

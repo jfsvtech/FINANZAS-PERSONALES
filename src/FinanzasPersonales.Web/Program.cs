@@ -263,6 +263,9 @@ using (var scope = app.Services.CreateScope())
                   ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
                   ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
                   ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS capital_original NUMERIC(14,2) NULL;
+                  ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS cuenta_origen_id INT NULL REFERENCES cuentas(id);
+                  ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS cuenta_cobro_id INT NULL REFERENCES cuentas(id);
+                  ALTER TABLE prestamos ADD COLUMN IF NOT EXISTS movimiento_desembolso_id INT NULL REFERENCES movimientos(id) ON DELETE SET NULL;
                   UPDATE prestamos SET capital_original=capital WHERE capital_original IS NULL;
                 END IF;
                 IF to_regclass('public.prestamo_pagos') IS NOT NULL THEN
@@ -270,6 +273,8 @@ using (var scope = app.Services.CreateScope())
                   ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
                   ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1;
                   ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP';
+                  ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS cuenta_id INT NULL REFERENCES cuentas(id);
+                  ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS movimiento_id INT NULL REFERENCES movimientos(id) ON DELETE SET NULL;
                   ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS efecto_abono VARCHAR(20) NOT NULL DEFAULT 'no_aplica';
                   ALTER TABLE prestamo_pagos ADD COLUMN IF NOT EXISTS es_extraordinario BOOLEAN NOT NULL DEFAULT FALSE;
                   UPDATE prestamo_pagos SET monto_original=monto WHERE monto_original IS NULL;
@@ -577,6 +582,7 @@ using (var scope = app.Services.CreateScope())
                   cuota_estimada NUMERIC(16,2) NULL CHECK (cuota_estimada IS NULL OR cuota_estimada >= 0),
                   cuenta_desembolso_id INT NULL REFERENCES cuentas(id),
                   cuenta_pago_id INT NULL REFERENCES cuentas(id),
+                  movimiento_desembolso_id INT NULL REFERENCES movimientos(id) ON DELETE SET NULL,
                   notas VARCHAR(500) NULL,
                   estado VARCHAR(15) NOT NULL DEFAULT 'activa' CHECK (estado IN ('activa','pagada','refinanciada','vencida')),
                   creado_en TIMESTAMP NOT NULL DEFAULT NOW()
@@ -595,6 +601,7 @@ using (var scope = app.Services.CreateScope())
                   tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
                   moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
                   cuenta_pago_id INT NULL REFERENCES cuentas(id),
+                  movimiento_id INT NULL REFERENCES movimientos(id) ON DELETE SET NULL,
                   efecto_abono VARCHAR(20) NOT NULL DEFAULT 'no_aplica' CHECK (efecto_abono IN ('no_aplica','reducir_plazo','reducir_cuota')),
                   es_extraordinario BOOLEAN NOT NULL DEFAULT FALSE,
                   notas VARCHAR(300) NULL,
@@ -607,6 +614,8 @@ using (var scope = app.Services.CreateScope())
             @"DO $$
               BEGIN
                 IF to_regclass('public.deuda_pagos') IS NOT NULL THEN
+                  ALTER TABLE deudas ADD COLUMN IF NOT EXISTS movimiento_desembolso_id INT NULL REFERENCES movimientos(id) ON DELETE SET NULL;
+                  ALTER TABLE deuda_pagos ADD COLUMN IF NOT EXISTS movimiento_id INT NULL REFERENCES movimientos(id) ON DELETE SET NULL;
                   ALTER TABLE deuda_pagos ADD COLUMN IF NOT EXISTS efecto_abono VARCHAR(20) NOT NULL DEFAULT 'no_aplica';
                   ALTER TABLE deuda_pagos ADD COLUMN IF NOT EXISTS es_extraordinario BOOLEAN NOT NULL DEFAULT FALSE;
                   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_deuda_pagos_efecto_abono') THEN

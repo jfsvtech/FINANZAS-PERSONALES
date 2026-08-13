@@ -190,6 +190,11 @@ public class DeudasController : BaseController
                     cuentaPagoId,
                     notas
                 });
+            if (cuentaDesembolsoId.HasValue)
+            {
+                var movimientoId = CrearMovimiento(con, fechaDesembolso, "ingreso", cuentaDesembolsoId.Value, $"Prestamo recibido: {acreedor.Trim()}", conversion);
+                con.Execute("UPDATE deudas SET movimiento_desembolso_id=@movimientoId WHERE id=@nuevoId AND usuario_id=@UsuarioId", new { movimientoId, nuevoId, UsuarioId });
+            }
             TempData["Ok"] = "Deuda registrada.";
             _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Crear", "deudas", nuevoId, $"Deuda con {acreedor} creada.");
             return RedirectToAction("Detalle", new { id = nuevoId });
@@ -229,6 +234,7 @@ public class DeudasController : BaseController
                 cuentaPagoId,
                 notas
             });
+        SincronizarMovimientoDesembolso(con, id, cuentaDesembolsoId, fechaDesembolso, $"Prestamo recibido: {acreedor.Trim()}", conversion);
         ActualizarEstado(con, id);
         TempData["Ok"] = "Deuda actualizada.";
         _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Actualizar", "deudas", id, $"Deuda con {acreedor} actualizada.");
@@ -277,11 +283,12 @@ public class DeudasController : BaseController
         catch (Exception ex) { TempData["Error"] = ex.Message; return RedirectToAction("Detalle", new { id = deudaId }); }
 
         var factor = montoTotal == 0 ? 1 : conversionTotal.MontoBase / montoTotal;
-        con.Execute(
+        var pagoId = con.ExecuteScalar<int>(
             @"INSERT INTO deuda_pagos(usuario_id,deuda_id,fecha,monto_total,capital,interes,costos,monto_original,
                          moneda_codigo,tasa_conversion,moneda_base_codigo,cuenta_pago_id,efecto_abono,es_extraordinario,notas)
               VALUES(@UsuarioId,@deudaId,@fecha,@montoBase,@capitalBase,@interesBase,@costosBase,@montoOriginal,
-                         @monedaCodigo,@tasa,@monedaBase,@cuentaPagoId,@efectoAbono,@esExtraordinario,@notas)",
+                         @monedaCodigo,@tasa,@monedaBase,@cuentaPagoId,@efectoAbono,@esExtraordinario,@notas)
+              RETURNING id",
             new
             {
                 UsuarioId,
@@ -300,6 +307,11 @@ public class DeudasController : BaseController
                 esExtraordinario,
                 notas
             });
+        if (cuentaPagoId.HasValue)
+        {
+            var movimientoId = CrearMovimiento(con, fecha, "gasto", cuentaPagoId.Value, $"Pago deuda: {deuda.Acreedor}", conversionTotal);
+            con.Execute("UPDATE deuda_pagos SET movimiento_id=@movimientoId WHERE id=@pagoId AND usuario_id=@UsuarioId", new { movimientoId, pagoId, UsuarioId });
+        }
         if (deuda.ProximaFechaPago.HasValue)
         {
             con.Execute(
@@ -352,7 +364,9 @@ public class DeudasController : BaseController
     public IActionResult EliminarPago(int id, int deudaId)
     {
         using var con = _db.Abrir();
+        var movimientoId = con.ExecuteScalar<int?>("SELECT movimiento_id FROM deuda_pagos WHERE id=@id AND deuda_id=@deudaId AND usuario_id=@UsuarioId", new { id, deudaId, UsuarioId });
         con.Execute("DELETE FROM deuda_pagos WHERE id=@id AND deuda_id=@deudaId AND usuario_id=@UsuarioId", new { id, deudaId, UsuarioId });
+        EliminarMovimiento(con, movimientoId);
         ActualizarEstado(con, deudaId);
         TempData["Ok"] = "Pago eliminado.";
         _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Eliminar pago", "deuda_pagos", id, $"Pago de deuda eliminado.");
@@ -364,7 +378,14 @@ public class DeudasController : BaseController
     public IActionResult Eliminar(int id)
     {
         using var con = _db.Abrir();
+        var movimientos = con.Query<int>(
+            @"SELECT movimiento_id FROM deuda_pagos WHERE deuda_id=@id AND usuario_id=@UsuarioId AND movimiento_id IS NOT NULL
+              UNION
+              SELECT movimiento_desembolso_id FROM deudas WHERE id=@id AND usuario_id=@UsuarioId AND movimiento_desembolso_id IS NOT NULL",
+            new { id, UsuarioId }).ToList();
         con.Execute("DELETE FROM deudas WHERE id=@id AND usuario_id=@UsuarioId", new { id, UsuarioId });
+        foreach (var movimientoId in movimientos)
+            EliminarMovimiento(con, movimientoId);
         TempData["Ok"] = "Deuda eliminada con su historial.";
         _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Eliminar", "deudas", id, "Deuda eliminada con historial.");
         return RedirectToAction("Index");
@@ -378,7 +399,8 @@ public class DeudasController : BaseController
                            d.tasa,d.periodo_tasa AS PeriodoTasa,d.sistema_pago AS SistemaPago,d.plazo_meses AS PlazoMeses,
                            d.dia_pago AS DiaPago,d.proxima_fecha_pago AS ProximaFechaPago,d.cuota_estimada AS CuotaEstimada,
                            d.saldo_actual_informado AS SaldoActualInformado,d.fecha_saldo_actual AS FechaSaldoActual,
-                           d.cuenta_desembolso_id AS CuentaDesembolsoId,d.cuenta_pago_id AS CuentaPagoId,d.notas,d.estado,
+                           d.cuenta_desembolso_id AS CuentaDesembolsoId,d.cuenta_pago_id AS CuentaPagoId,
+                           d.movimiento_desembolso_id AS MovimientoDesembolsoId,d.notas,d.estado,
                            cd.nombre AS CuentaDesembolsoNombre, cp.nombre AS CuentaPagoNombre
                     FROM deudas d
                     LEFT JOIN cuentas cd ON cd.id=d.cuenta_desembolso_id
@@ -397,6 +419,7 @@ public class DeudasController : BaseController
                            p.capital,p.interes,p.costos,p.monto_original AS MontoOriginal,p.moneda_codigo AS MonedaCodigo,
                            p.tasa_conversion AS TasaConversion,p.moneda_base_codigo AS MonedaBaseCodigo,
                            p.cuenta_pago_id AS CuentaPagoId,c.nombre AS CuentaPagoNombre,
+                           p.movimiento_id AS MovimientoId,
                            COALESCE(p.efecto_abono,'no_aplica') AS EfectoAbono,
                            COALESCE(p.es_extraordinario,FALSE) AS EsExtraordinario,
                            p.notas
@@ -481,9 +504,10 @@ public class DeudasController : BaseController
 
         if (deuda.CuentaPagoId.HasValue)
         {
-            con.Execute(
+            var movimientoId = con.ExecuteScalar<int>(
                 @"INSERT INTO movimientos(usuario_id,fecha,tipo,cuenta_id,categoria_id,descripcion,monto,monto_original,moneda_codigo,tasa_conversion,moneda_base_codigo)
-                  VALUES(@UsuarioId,@fecha,'gasto',@cuentaId,NULL,@descripcion,@monto,@monto,@moneda,1,@moneda)",
+                  VALUES(@UsuarioId,@fecha,'gasto',@cuentaId,NULL,@descripcion,@monto,@monto,@moneda,1,@moneda)
+                  RETURNING id",
                 new
                 {
                     UsuarioId,
@@ -493,6 +517,7 @@ public class DeudasController : BaseController
                     monto,
                     moneda = deuda.MonedaBaseCodigo
                 });
+            con.Execute("UPDATE deuda_pagos SET movimiento_id=@movimientoId WHERE id=@pagoId AND usuario_id=@UsuarioId", new { movimientoId, pagoId, UsuarioId });
         }
 
         var siguienteFecha = deuda.ProximaFechaPago.HasValue
@@ -505,6 +530,77 @@ public class DeudasController : BaseController
         ActualizarEstado(con, deuda.Id);
         _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Registrar cuota programada", "deuda_pagos", pagoId, $"Cuota automatica de {deuda.Acreedor} por {monto:N0}.");
         return (true, $"Cuota programada de {deuda.Acreedor} registrada por {monto:C0}.");
+    }
+
+    private int CrearMovimiento(System.Data.IDbConnection con, DateTime fecha, string tipo, int cuentaId, string descripcion, ConversionMoneda conversion)
+    {
+        return con.ExecuteScalar<int>(
+            @"INSERT INTO movimientos(usuario_id,fecha,tipo,cuenta_id,categoria_id,descripcion,monto,monto_original,moneda_codigo,tasa_conversion,moneda_base_codigo)
+              VALUES(@UsuarioId,@fecha,@tipo,@cuentaId,NULL,@descripcion,@monto,@montoOriginal,@monedaCodigo,@tasa,@monedaBase)
+              RETURNING id",
+            new
+            {
+                UsuarioId,
+                fecha,
+                tipo,
+                cuentaId,
+                descripcion,
+                monto = conversion.MontoBase,
+                montoOriginal = conversion.MontoOriginal,
+                monedaCodigo = conversion.MonedaOrigen,
+                tasa = conversion.Tasa,
+                monedaBase = conversion.MonedaDestino
+            });
+    }
+
+    private void SincronizarMovimientoDesembolso(System.Data.IDbConnection con, int deudaId, int? cuentaDesembolsoId,
+        DateTime fecha, string descripcion, ConversionMoneda conversion)
+    {
+        var movimientoId = con.ExecuteScalar<int?>(
+            "SELECT movimiento_desembolso_id FROM deudas WHERE id=@deudaId AND usuario_id=@UsuarioId",
+            new { deudaId, UsuarioId });
+
+        if (cuentaDesembolsoId.HasValue)
+        {
+            if (movimientoId.HasValue)
+            {
+                con.Execute(
+                    @"UPDATE movimientos SET fecha=@fecha,tipo='ingreso',cuenta_id=@cuentaId,categoria_id=NULL,descripcion=@descripcion,
+                             monto=@monto,monto_original=@montoOriginal,moneda_codigo=@monedaCodigo,tasa_conversion=@tasa,moneda_base_codigo=@monedaBase
+                      WHERE id=@movimientoId AND usuario_id=@UsuarioId",
+                    new
+                    {
+                        UsuarioId,
+                        movimientoId,
+                        fecha,
+                        cuentaId = cuentaDesembolsoId.Value,
+                        descripcion,
+                        monto = conversion.MontoBase,
+                        montoOriginal = conversion.MontoOriginal,
+                        monedaCodigo = conversion.MonedaOrigen,
+                        tasa = conversion.Tasa,
+                        monedaBase = conversion.MonedaDestino
+                    });
+            }
+            else
+            {
+                var nuevoMovimientoId = CrearMovimiento(con, fecha, "ingreso", cuentaDesembolsoId.Value, descripcion, conversion);
+                con.Execute("UPDATE deudas SET movimiento_desembolso_id=@nuevoMovimientoId WHERE id=@deudaId AND usuario_id=@UsuarioId",
+                    new { nuevoMovimientoId, deudaId, UsuarioId });
+            }
+        }
+        else if (movimientoId.HasValue)
+        {
+            EliminarMovimiento(con, movimientoId);
+            con.Execute("UPDATE deudas SET movimiento_desembolso_id=NULL WHERE id=@deudaId AND usuario_id=@UsuarioId",
+                new { deudaId, UsuarioId });
+        }
+    }
+
+    private void EliminarMovimiento(System.Data.IDbConnection con, int? movimientoId)
+    {
+        if (!movimientoId.HasValue) return;
+        con.Execute("DELETE FROM movimientos WHERE id=@movimientoId AND usuario_id=@UsuarioId", new { movimientoId, UsuarioId });
     }
 
     private List<Cuenta> CuentasActivas(System.Data.IDbConnection con) =>

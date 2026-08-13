@@ -31,6 +31,8 @@
     else { <span> al <strong>@p.TasaMensual.ToString("0.##")% mensual</strong></span> }
     @if (p.DiaPagoInteres.HasValue) { <span> &bull; interes pactado el dia <strong>@p.DiaPagoInteres</strong> de cada mes</span> }
     @if (p.FechaPagoCapital.HasValue) { <span> &bull; capital pactado para el <strong>@p.FechaPagoCapital.Value.ToString("dd MMM yyyy")</strong></span> }
+    @if (!string.IsNullOrWhiteSpace(p.CuentaOrigenNombre)) { <span> &bull; salio de <strong>@p.CuentaOrigenNombre</strong></span> }
+    @if (!string.IsNullOrWhiteSpace(p.CuentaCobroNombre)) { <span> &bull; cobros a <strong>@p.CuentaCobroNombre</strong></span> }
     @if (!string.IsNullOrWhiteSpace(p.Notas)) { <br /> <i class="bi bi-sticky"></i> @p.Notas }
 </div>
 
@@ -173,6 +175,18 @@
                     </div>
                 </div>
                 <div class="mb-3">
+                    <label class="form-label">Cuenta que recibe</label>
+                    <select name="cuentaId" class="form-select">
+                        <option value="">No aplica</option>
+                        @foreach (var c in Model.Cuentas)
+                        {
+                            if (c.Id == p.CuentaCobroId) { <option value="@c.Id" selected>@c.Nombre</option> }
+                            else { <option value="@c.Id">@c.Nombre</option> }
+                        }
+                    </select>
+                    <div class="form-text">El pago entrara como ingreso a esta cuenta.</div>
+                </div>
+                <div class="mb-3">
                     <label class="form-label">Nota (opcional)</label>
                     <input name="notas" class="form-control" maxlength="200" />
                 </div>
@@ -202,6 +216,10 @@
                             <td>
                                 @if (pago.Tipo == "abono_capital") { <span class="badge text-bg-success">Abono a capital</span> }
                                 else { <span class="badge text-bg-warning">Pago de interes</span> }
+                                @if (!string.IsNullOrWhiteSpace(pago.CuentaNombre))
+                                {
+                                    <small class="d-block text-muted"><i class="bi bi-wallet2"></i> @pago.CuentaNombre</small>
+                                }
                                 @if (pago.Tipo == "abono_capital")
                                 {
                                     <small class="d-block text-muted">@pago.EfectoAbonoTexto@if(pago.EsExtraordinario){<span> · Extraordinario</span>}</small>
@@ -265,6 +283,30 @@
                     <div class="col-6">
                         <label class="form-label">Tasa manual</label>
                         <input type="number" name="tasaConversion" class="form-control" min="0" step="0.000001" value="@(p.TasaConversion == 1 ? "" : p.TasaConversion.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture))" />
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Cuenta de salida</label>
+                        <select name="cuentaOrigenId" class="form-select">
+                            <option value="">No aplica</option>
+                            @foreach (var c in Model.Cuentas)
+                            {
+                                if (c.Id == p.CuentaOrigenId) { <option value="@c.Id" selected>@c.Nombre</option> }
+                                else { <option value="@c.Id">@c.Nombre</option> }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Cuenta para cobros</label>
+                        <select name="cuentaCobroId" class="form-select">
+                            <option value="">No aplica</option>
+                            @foreach (var c in Model.Cuentas)
+                            {
+                                if (c.Id == p.CuentaCobroId) { <option value="@c.Id" selected>@c.Nombre</option> }
+                                else { <option value="@c.Id">@c.Nombre</option> }
+                            }
+                        </select>
                     </div>
                 </div>
                 <div class="row g-2 mb-3">

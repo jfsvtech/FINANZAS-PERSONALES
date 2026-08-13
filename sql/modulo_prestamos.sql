@@ -22,9 +22,15 @@ CREATE TABLE IF NOT EXISTS prestamos (
     persona_id         INT           NOT NULL REFERENCES personas(id),
     fecha              DATE          NOT NULL,
     capital            NUMERIC(14,2) NOT NULL CHECK (capital > 0),
+    capital_original   NUMERIC(14,2) NULL,
+    moneda_codigo      VARCHAR(3)    NOT NULL DEFAULT 'COP',
+    tasa_conversion    NUMERIC(20,8) NOT NULL DEFAULT 1,
     tasa_mensual       NUMERIC(6,3)  NOT NULL CHECK (tasa_mensual >= 0), -- % de interes mensual
     dia_pago_interes   INT           NULL CHECK (dia_pago_interes BETWEEN 1 AND 31),
     fecha_pago_capital DATE          NULL, -- fecha pactada para devolver el capital (si aplica)
+    cuenta_origen_id   INT           NULL REFERENCES cuentas(id),
+    cuenta_cobro_id    INT           NULL REFERENCES cuentas(id),
+    movimiento_desembolso_id INT     NULL REFERENCES movimientos(id) ON DELETE SET NULL,
     notas              VARCHAR(300)  NULL,
     estado             VARCHAR(10)   NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','pagado'))
 );
@@ -43,6 +49,8 @@ CREATE TABLE IF NOT EXISTS prestamo_pagos (
     moneda_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
     tasa_conversion NUMERIC(20,8) NOT NULL DEFAULT 1,
     moneda_base_codigo VARCHAR(3) NOT NULL DEFAULT 'COP',
+    cuenta_id   INT           NULL REFERENCES cuentas(id),
+    movimiento_id INT         NULL REFERENCES movimientos(id) ON DELETE SET NULL,
     efecto_abono VARCHAR(20) NOT NULL DEFAULT 'no_aplica' CHECK (efecto_abono IN ('no_aplica','reducir_plazo','reducir_cuota')),
     es_extraordinario BOOLEAN NOT NULL DEFAULT FALSE,
     notas       VARCHAR(200)  NULL,

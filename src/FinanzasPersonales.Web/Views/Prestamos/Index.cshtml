@@ -181,6 +181,24 @@
                     </div>
                 </div>
                 <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Cuenta de salida</label>
+                        <select name="cuentaOrigenId" class="form-select">
+                            <option value="">No aplica</option>
+                            @foreach (var c in Model.Cuentas) { <option value="@c.Id">@c.Nombre</option> }
+                        </select>
+                        <div class="form-text">De aqui sale el dinero prestado.</div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Cuenta para cobros</label>
+                        <select name="cuentaCobroId" class="form-select">
+                            <option value="">No aplica</option>
+                            @foreach (var c in Model.Cuentas) { <option value="@c.Id">@c.Nombre</option> }
+                        </select>
+                        <div class="form-text">Aqui entran abonos e intereses.</div>
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
                     <div class="col-12">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="prSinInteres" onchange="toggleInteresPrestamo()" />

@@ -414,11 +414,16 @@ public class Prestamo
     public decimal TasaMensual { get; set; } // % de interes mensual
     public int? DiaPagoInteres { get; set; }
     public DateTime? FechaPagoCapital { get; set; }
+    public int? CuentaOrigenId { get; set; }
+    public int? CuentaCobroId { get; set; }
+    public int? MovimientoDesembolsoId { get; set; }
     public string? Notas { get; set; }
     public string Estado { get; set; } = "activo"; // activo | pagado
 
     // Presentacion (join)
     public string? PersonaNombre { get; set; }
+    public string? CuentaOrigenNombre { get; set; }
+    public string? CuentaCobroNombre { get; set; }
 
     // Calculados sobre el historial de pagos
     public decimal AbonadoCapital { get; set; }
@@ -441,6 +446,9 @@ public class PrestamoPago
     public string MonedaCodigo { get; set; } = "COP";
     public decimal TasaConversion { get; set; } = 1;
     public string MonedaBaseCodigo { get; set; } = "COP";
+    public int? CuentaId { get; set; }
+    public string? CuentaNombre { get; set; }
+    public int? MovimientoId { get; set; }
     public string EfectoAbono { get; set; } = "no_aplica";
     public bool EsExtraordinario { get; set; }
     public string? Notas { get; set; }
@@ -457,6 +465,7 @@ public class PrestamosIndexVm
 {
     public List<Prestamo> Prestamos { get; set; } = new();
     public List<Persona> Personas { get; set; } = new();
+    public List<Cuenta> Cuentas { get; set; } = new();
     public List<Moneda> Monedas { get; set; } = new();
     public string MonedaBase { get; set; } = "COP";
     public int? FiltroPersonaId { get; set; }
@@ -491,6 +500,7 @@ public class Deuda
     public DateTime? FechaSaldoActual { get; set; }
     public int? CuentaDesembolsoId { get; set; }
     public int? CuentaPagoId { get; set; }
+    public int? MovimientoDesembolsoId { get; set; }
     public string? Notas { get; set; }
     public string Estado { get; set; } = "activa";
     public string? CuentaDesembolsoNombre { get; set; }
@@ -555,6 +565,7 @@ public class DeudaPago
     public string MonedaBaseCodigo { get; set; } = "COP";
     public int? CuentaPagoId { get; set; }
     public string? CuentaPagoNombre { get; set; }
+    public int? MovimientoId { get; set; }
     public string EfectoAbono { get; set; } = "no_aplica";
     public bool EsExtraordinario { get; set; }
     public string? Notas { get; set; }
@@ -594,6 +605,7 @@ public class PrestamoDetalleVm
 {
     public Prestamo Prestamo { get; set; } = new();
     public List<PrestamoPago> Pagos { get; set; } = new();
+    public List<Cuenta> Cuentas { get; set; } = new();
     public List<Moneda> Monedas { get; set; } = new();
     public string MonedaBase { get; set; } = "COP";
 }
