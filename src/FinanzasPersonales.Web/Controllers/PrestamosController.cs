@@ -122,6 +122,7 @@ public class PrestamosController : BaseController
         var prestamo = ConsultarPrestamos(con, id).FirstOrDefault();
         if (prestamo == null) return NotFound();
 
+        SincronizarMovimientosFaltantes(con, prestamo);
         var pagos = ConsultarPagos(con, id);
         CalculoPrestamos.CompletarCalculos(prestamo, pagos);
         var pref = _preferencias.Obtener(UsuarioId);
@@ -210,6 +211,11 @@ public class PrestamosController : BaseController
         if (prestamo == null) return NotFound();
         cuentaId ??= prestamo.CuentaCobroId;
         if (cuentaId.HasValue && !CuentaEsMia(con, cuentaId.Value)) return Forbid();
+        if (!cuentaId.HasValue)
+        {
+            TempData["Error"] = "Selecciona la cuenta donde recibiste el pago para reflejarlo en movimientos.";
+            return RedirectToAction("Detalle", new { id = prestamoId });
+        }
         if (tipo == "pago_interes" && prestamo.TasaMensual <= 0)
         {
             TempData["Error"] = "Este prestamo no tiene intereses; solo permite abonos a capital.";
@@ -252,11 +258,8 @@ public class PrestamosController : BaseController
                          @tasa, @monedaBase, @cuentaId, @efectoAbono, @esExtraordinario, @notas)
               RETURNING id",
             new { UsuarioId, prestamoId, fecha, tipo, montoBase = conversion.MontoBase, montoOriginal = conversion.MontoOriginal, monedaCodigo = conversion.MonedaOrigen, tasa = conversion.Tasa, monedaBase = conversion.MonedaDestino, cuentaId, efectoAbono, esExtraordinario, notas });
-        if (cuentaId.HasValue)
-        {
-            var movimientoId = CrearMovimiento(con, fecha, "ingreso", cuentaId.Value, $"{(tipo == "abono_capital" ? "Abono capital" : "Pago interes")} prestamo: {prestamo.PersonaNombre}", conversion);
-            con.Execute("UPDATE prestamo_pagos SET movimiento_id=@movimientoId WHERE id=@pagoId AND usuario_id=@UsuarioId", new { movimientoId, pagoId, UsuarioId });
-        }
+        var movimientoId = CrearMovimiento(con, fecha, "ingreso", cuentaId.Value, $"{(tipo == "abono_capital" ? "Abono capital" : "Pago interes")} prestamo: {prestamo.PersonaNombre}", conversion);
+        con.Execute("UPDATE prestamo_pagos SET movimiento_id=@movimientoId WHERE id=@pagoId AND usuario_id=@UsuarioId", new { movimientoId, pagoId, UsuarioId });
 
         ActualizarEstado(con, prestamoId);
         TempData["Ok"] = tipo == "abono_capital" ? "Abono a capital registrado." : "Pago de interes registrado.";
@@ -418,6 +421,48 @@ public class PrestamosController : BaseController
             EliminarMovimiento(con, movimientoId);
             con.Execute("UPDATE prestamos SET movimiento_desembolso_id=NULL WHERE id=@prestamoId AND usuario_id=@UsuarioId",
                 new { prestamoId, UsuarioId });
+        }
+    }
+
+    private void SincronizarMovimientosFaltantes(System.Data.IDbConnection con, Prestamo prestamo)
+    {
+        if (prestamo.CuentaOrigenId.HasValue && !prestamo.MovimientoDesembolsoId.HasValue)
+        {
+            var conversionDesembolso = new ConversionMoneda(
+                prestamo.CapitalOriginal ?? prestamo.Capital,
+                prestamo.Capital,
+                prestamo.MonedaCodigo,
+                _preferencias.Obtener(UsuarioId).MonedaCodigo,
+                prestamo.TasaConversion,
+                "prestamo");
+            var movimientoId = CrearMovimiento(con, prestamo.Fecha, "gasto", prestamo.CuentaOrigenId.Value,
+                $"Prestamo entregado: {prestamo.PersonaNombre}", conversionDesembolso);
+            con.Execute("UPDATE prestamos SET movimiento_desembolso_id=@movimientoId WHERE id=@id AND usuario_id=@UsuarioId",
+                new { movimientoId, id = prestamo.Id, UsuarioId });
+        }
+
+        var pagosSinMovimiento = ConsultarPagos(con, prestamo.Id)
+            .Where(x => !x.MovimientoId.HasValue)
+            .ToList();
+        foreach (var pago in pagosSinMovimiento)
+        {
+            var cuentaId = pago.CuentaId ?? prestamo.CuentaCobroId;
+            if (!cuentaId.HasValue || !CuentaEsMia(con, cuentaId.Value)) continue;
+
+            var conversionPago = new ConversionMoneda(
+                pago.MontoOriginal > 0 ? pago.MontoOriginal : pago.Monto,
+                pago.Monto,
+                string.IsNullOrWhiteSpace(pago.MonedaCodigo) ? prestamo.MonedaCodigo : pago.MonedaCodigo,
+                string.IsNullOrWhiteSpace(pago.MonedaBaseCodigo) ? _preferencias.Obtener(UsuarioId).MonedaCodigo : pago.MonedaBaseCodigo,
+                pago.TasaConversion <= 0 ? 1 : pago.TasaConversion,
+                "prestamo");
+            var movimientoId = CrearMovimiento(con, pago.Fecha, "ingreso", cuentaId.Value,
+                $"{(pago.Tipo == "abono_capital" ? "Abono capital" : "Pago interes")} prestamo: {prestamo.PersonaNombre}",
+                conversionPago);
+            con.Execute(
+                @"UPDATE prestamo_pagos SET cuenta_id=COALESCE(cuenta_id,@cuentaId), movimiento_id=@movimientoId
+                  WHERE id=@pagoId AND usuario_id=@UsuarioId",
+                new { cuentaId, movimientoId, pagoId = pago.Id, UsuarioId });
         }
     }
 

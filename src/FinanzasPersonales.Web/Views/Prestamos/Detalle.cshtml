@@ -176,7 +176,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Cuenta que recibe</label>
-                    <select name="cuentaId" class="form-select">
+                    <select name="cuentaId" class="form-select" required>
                         <option value="">No aplica</option>
                         @foreach (var c in Model.Cuentas)
                         {

@@ -44,6 +44,7 @@ public class DeudasController : BaseController
         using var con = _db.Abrir();
         var deuda = ConsultarDeudas(con, id: id).FirstOrDefault();
         if (deuda == null) return NotFound();
+        SincronizarMovimientosPagosFaltantes(con, deuda);
         var pagos = ConsultarPagos(con, id);
         CompletarCalculos(deuda, pagos);
         var pref = _preferencias.Obtener(UsuarioId);
@@ -261,7 +262,13 @@ public class DeudasController : BaseController
         using var con = _db.Abrir();
         var deuda = ConsultarDeudas(con, id: deudaId).FirstOrDefault();
         if (deuda == null) return NotFound();
+        cuentaPagoId ??= deuda.CuentaPagoId;
         if (cuentaPagoId.HasValue && !CuentaEsMia(con, cuentaPagoId.Value)) return Forbid();
+        if (!cuentaPagoId.HasValue)
+        {
+            TempData["Error"] = "Selecciona la cuenta desde donde salio el pago para reflejarlo en movimientos.";
+            return RedirectToAction("Detalle", new { id = deudaId });
+        }
 
         var pagos = ConsultarPagos(con, deudaId);
         CompletarCalculos(deuda, pagos);
@@ -307,11 +314,8 @@ public class DeudasController : BaseController
                 esExtraordinario,
                 notas
             });
-        if (cuentaPagoId.HasValue)
-        {
-            var movimientoId = CrearMovimiento(con, fecha, "gasto", cuentaPagoId.Value, $"Pago deuda: {deuda.Acreedor}", conversionTotal);
-            con.Execute("UPDATE deuda_pagos SET movimiento_id=@movimientoId WHERE id=@pagoId AND usuario_id=@UsuarioId", new { movimientoId, pagoId, UsuarioId });
-        }
+        var movimientoId = CrearMovimiento(con, fecha, "gasto", cuentaPagoId.Value, $"Pago deuda: {deuda.Acreedor}", conversionTotal);
+        con.Execute("UPDATE deuda_pagos SET movimiento_id=@movimientoId WHERE id=@pagoId AND usuario_id=@UsuarioId", new { movimientoId, pagoId, UsuarioId });
         if (deuda.ProximaFechaPago.HasValue)
         {
             con.Execute(
@@ -322,6 +326,85 @@ public class DeudasController : BaseController
         ActualizarEstado(con, deudaId);
         TempData["Ok"] = "Pago de deuda registrado.";
         _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Registrar pago", "deuda_pagos", deudaId, $"Pago de deuda por {montoTotal:N0} registrado.");
+        return RedirectToAction("Detalle", new { id = deudaId });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult EditarPago(int id, int deudaId, DateTime fecha, decimal montoTotal, decimal capital,
+        decimal interes, decimal costos, int? cuentaPagoId, string? notas, string efectoAbono = "no_aplica",
+        bool esExtraordinario = false, string monedaCodigo = "COP", decimal? tasaConversion = null)
+    {
+        if (montoTotal <= 0 || capital < 0 || interes < 0 || costos < 0 || capital + interes + costos <= 0)
+        {
+            TempData["Error"] = "Los valores del pago no son validos.";
+            return RedirectToAction("Detalle", new { id = deudaId });
+        }
+
+        using var con = _db.Abrir();
+        var deuda = ConsultarDeudas(con, id: deudaId).FirstOrDefault();
+        if (deuda == null) return NotFound();
+        var pagoActual = ConsultarPagos(con, deudaId).FirstOrDefault(x => x.Id == id);
+        if (pagoActual == null) return NotFound();
+
+        cuentaPagoId ??= deuda.CuentaPagoId;
+        if (cuentaPagoId.HasValue && !CuentaEsMia(con, cuentaPagoId.Value)) return Forbid();
+        if (!cuentaPagoId.HasValue)
+        {
+            TempData["Error"] = "Selecciona la cuenta desde donde salio el pago.";
+            return RedirectToAction("Detalle", new { id = deudaId });
+        }
+
+        var pagos = ConsultarPagos(con, deudaId);
+        CompletarCalculos(deuda, pagos);
+        if (capital > deuda.SaldoCapital + pagoActual.Capital)
+        {
+            TempData["Error"] = $"El abono a capital supera el saldo pendiente disponible ({deuda.SaldoCapital + pagoActual.Capital:C0}).";
+            return RedirectToAction("Detalle", new { id = deudaId });
+        }
+
+        if (capital > 0)
+            efectoAbono = NormalizarEfectoAbono(efectoAbono);
+        else
+        {
+            efectoAbono = "no_aplica";
+            esExtraordinario = false;
+        }
+
+        ConversionMoneda conversionTotal;
+        try { conversionTotal = Convertir(montoTotal, monedaCodigo, fecha, tasaConversion); }
+        catch (Exception ex) { TempData["Error"] = ex.Message; return RedirectToAction("Detalle", new { id = deudaId }); }
+
+        var factor = montoTotal == 0 ? 1 : conversionTotal.MontoBase / montoTotal;
+        con.Execute(
+            @"UPDATE deuda_pagos SET fecha=@fecha,monto_total=@montoBase,capital=@capitalBase,interes=@interesBase,
+                     costos=@costosBase,monto_original=@montoOriginal,moneda_codigo=@monedaCodigo,tasa_conversion=@tasa,
+                     moneda_base_codigo=@monedaBase,cuenta_pago_id=@cuentaPagoId,efecto_abono=@efectoAbono,
+                     es_extraordinario=@esExtraordinario,notas=@notas
+              WHERE id=@id AND deuda_id=@deudaId AND usuario_id=@UsuarioId",
+            new
+            {
+                id,
+                UsuarioId,
+                deudaId,
+                fecha,
+                montoBase = conversionTotal.MontoBase,
+                capitalBase = Math.Round(capital * factor, 2),
+                interesBase = Math.Round(interes * factor, 2),
+                costosBase = Math.Round(costos * factor, 2),
+                montoOriginal = conversionTotal.MontoOriginal,
+                monedaCodigo = conversionTotal.MonedaOrigen,
+                tasa = conversionTotal.Tasa,
+                monedaBase = conversionTotal.MonedaDestino,
+                cuentaPagoId,
+                efectoAbono,
+                esExtraordinario,
+                notas
+            });
+        SincronizarMovimientoPago(con, id, cuentaPagoId.Value, fecha, $"Pago deuda: {deuda.Acreedor}", conversionTotal);
+        ActualizarEstado(con, deudaId);
+        TempData["Ok"] = "Pago de deuda actualizado y sincronizado con movimientos.";
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Deudas", "Editar pago", "deuda_pagos", id, $"Pago de deuda editado por {montoTotal:N0}.");
         return RedirectToAction("Detalle", new { id = deudaId });
     }
 
@@ -594,6 +677,59 @@ public class DeudasController : BaseController
             EliminarMovimiento(con, movimientoId);
             con.Execute("UPDATE deudas SET movimiento_desembolso_id=NULL WHERE id=@deudaId AND usuario_id=@UsuarioId",
                 new { deudaId, UsuarioId });
+        }
+    }
+
+    private void SincronizarMovimientoPago(System.Data.IDbConnection con, int pagoId, int cuentaPagoId,
+        DateTime fecha, string descripcion, ConversionMoneda conversion)
+    {
+        var movimientoId = con.ExecuteScalar<int?>(
+            "SELECT movimiento_id FROM deuda_pagos WHERE id=@pagoId AND usuario_id=@UsuarioId",
+            new { pagoId, UsuarioId });
+
+        if (movimientoId.HasValue)
+        {
+            con.Execute(
+                @"UPDATE movimientos SET fecha=@fecha,tipo='gasto',cuenta_id=@cuentaPagoId,categoria_id=NULL,descripcion=@descripcion,
+                         monto=@monto,monto_original=@montoOriginal,moneda_codigo=@monedaCodigo,tasa_conversion=@tasa,moneda_base_codigo=@monedaBase
+                  WHERE id=@movimientoId AND usuario_id=@UsuarioId",
+                new
+                {
+                    UsuarioId,
+                    movimientoId,
+                    fecha,
+                    cuentaPagoId,
+                    descripcion,
+                    monto = conversion.MontoBase,
+                    montoOriginal = conversion.MontoOriginal,
+                    monedaCodigo = conversion.MonedaOrigen,
+                    tasa = conversion.Tasa,
+                    monedaBase = conversion.MonedaDestino
+                });
+        }
+        else
+        {
+            var nuevoMovimientoId = CrearMovimiento(con, fecha, "gasto", cuentaPagoId, descripcion, conversion);
+            con.Execute("UPDATE deuda_pagos SET movimiento_id=@nuevoMovimientoId, cuenta_pago_id=COALESCE(cuenta_pago_id,@cuentaPagoId) WHERE id=@pagoId AND usuario_id=@UsuarioId",
+                new { nuevoMovimientoId, cuentaPagoId, pagoId, UsuarioId });
+        }
+    }
+
+    private void SincronizarMovimientosPagosFaltantes(System.Data.IDbConnection con, Deuda deuda)
+    {
+        var pagosSinMovimiento = ConsultarPagos(con, deuda.Id).Where(x => !x.MovimientoId.HasValue).ToList();
+        foreach (var pago in pagosSinMovimiento)
+        {
+            var cuentaId = pago.CuentaPagoId ?? deuda.CuentaPagoId;
+            if (!cuentaId.HasValue || !CuentaEsMia(con, cuentaId.Value)) continue;
+            var conversionPago = new ConversionMoneda(
+                pago.MontoOriginal > 0 ? pago.MontoOriginal : pago.MontoTotal,
+                pago.MontoTotal,
+                string.IsNullOrWhiteSpace(pago.MonedaCodigo) ? deuda.MonedaCodigo : pago.MonedaCodigo,
+                string.IsNullOrWhiteSpace(pago.MonedaBaseCodigo) ? deuda.MonedaBaseCodigo : pago.MonedaBaseCodigo,
+                pago.TasaConversion <= 0 ? 1 : pago.TasaConversion,
+                "deuda");
+            SincronizarMovimientoPago(con, pago.Id, cuentaId.Value, pago.Fecha, $"Pago deuda: {deuda.Acreedor}", conversionPago);
         }
     }
 

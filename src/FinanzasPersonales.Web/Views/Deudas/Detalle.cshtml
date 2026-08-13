@@ -1,4 +1,4 @@
-@model DeudaDetalleVm
+﻿@model DeudaDetalleVm
 @inject PreferenciasUsuarioService Money
 @{
     var d = Model.Deuda;
@@ -24,9 +24,9 @@
 </div>
 
 <div class="text-muted small mb-3">
-    @d.TipoTexto · @d.SistemaPagoTexto · Desembolso @d.FechaDesembolso.ToString("dd MMM yyyy")
-    @if (d.Tasa > 0){<span> · tasa @d.Tasa.ToString("0.####")% @d.PeriodoTasa</span>}
-    @if (d.ProximaFechaPago.HasValue){<span> · proximo pago @d.ProximaFechaPago.Value.ToString("dd MMM yyyy")</span>}
+    @d.TipoTexto Â· @d.SistemaPagoTexto Â· Desembolso @d.FechaDesembolso.ToString("dd MMM yyyy")
+    @if (d.Tasa > 0){<span> Â· tasa @d.Tasa.ToString("0.####")% @d.PeriodoTasa</span>}
+    @if (d.ProximaFechaPago.HasValue){<span> Â· proximo pago @d.ProximaFechaPago.Value.ToString("dd MMM yyyy")</span>}
     @if (!string.IsNullOrWhiteSpace(d.Notas)){<br/><i class="bi bi-sticky"></i> @d.Notas}
 </div>
 
@@ -142,7 +142,7 @@ else if (d.RequiereDatosParaAmortizar)
                     <div class="col-6"><label class="form-label">Moneda</label><select name="monedaCodigo" class="form-select">@foreach(var moneda in Model.Monedas){if(moneda.Codigo==d.MonedaCodigo){<option value="@moneda.Codigo" selected>@moneda.Codigo</option>}else{<option value="@moneda.Codigo">@moneda.Codigo</option>}}</select></div>
                     <div class="col-6"><label class="form-label">Tasa manual</label><input type="number" name="tasaConversion" class="form-control" min="0" step="0.000001" placeholder="Opcional" /></div>
                 </div>
-                <div class="mb-3"><label class="form-label">Cuenta de pago</label><select name="cuentaPagoId" class="form-select"><option value="">No aplica</option>@foreach(var c in Model.Cuentas){if(c.Id==d.CuentaPagoId){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select></div>
+                <div class="mb-3"><label class="form-label">Cuenta de pago</label><select name="cuentaPagoId" class="form-select" required><option value="">Selecciona cuenta</option>@foreach(var c in Model.Cuentas){if(c.Id==d.CuentaPagoId){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select><div class="form-text">Este pago saldra como gasto desde la cuenta seleccionada.</div></div>
                 <div class="mb-3"><label class="form-label">Notas</label><input name="notas" class="form-control" maxlength="300" /></div>
                 <button class="btn btn-primary w-100" @(d.Estado=="pagada"?"disabled":"")><i class="bi bi-check-lg"></i> Registrar ajuste</button>
                 <div class="form-text mt-2">Usa este formulario para abonos extraordinarios, costos, intereses no habituales o correcciones. La cuota normal se registra con el boton superior.</div>
@@ -158,9 +158,15 @@ else if (d.RequiereDatosParaAmortizar)
                     <tbody>
                     @foreach(var p in Model.Pagos)
                     {
-                        <tr><td>@p.Fecha.ToString("dd MMM yyyy")<small class="d-block text-muted">@p.Notas</small>@if(p.Capital>0){<small class="d-block text-muted">@p.EfectoAbonoTexto@if(p.EsExtraordinario){<span> · Extraordinario</span>}</small>}</td><td class="text-end fw-bold">@M(p.MontoOriginal,p.MonedaCodigo)@if(p.MonedaCodigo!=p.MonedaBaseCodigo){<small class="d-block text-muted">@M(p.MontoTotal,p.MonedaBaseCodigo)</small>}</td><td class="text-end d-none d-md-table-cell text-success">@M(p.Capital,Model.MonedaBase)</td><td class="text-end d-none d-md-table-cell text-warning">@M(p.Interes,Model.MonedaBase)</td><td class="text-end d-none d-md-table-cell">@M(p.Costos,Model.MonedaBase)</td><td class="text-end"><form method="post" asp-action="EliminarPago" onsubmit="return confirm('Eliminar pago?')">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@p.Id"/><input type="hidden" name="deudaId" value="@d.Id"/><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form></td></tr>
-                    }
-                    @if(!Model.Pagos.Any()){<tr><td colspan="6" class="text-center text-muted py-4">Sin pagos registrados.</td></tr>}
+                        <tr>
+                            <td>@p.Fecha.ToString("dd MMM yyyy")<small class="d-block text-muted">@p.Notas</small>@if(!string.IsNullOrWhiteSpace(p.CuentaPagoNombre)){<small class="d-block text-muted"><i class="bi bi-wallet2"></i> @p.CuentaPagoNombre</small>}@if(p.Capital>0){<small class="d-block text-muted">@p.EfectoAbonoTexto@if(p.EsExtraordinario){<span> · Extraordinario</span>}</small>}</td>
+                            <td class="text-end fw-bold">@M(p.MontoOriginal,p.MonedaCodigo)@if(p.MonedaCodigo!=p.MonedaBaseCodigo){<small class="d-block text-muted">@M(p.MontoTotal,p.MonedaBaseCodigo)</small>}</td>
+                            <td class="text-end d-none d-md-table-cell text-success">@M(p.Capital,Model.MonedaBase)</td>
+                            <td class="text-end d-none d-md-table-cell text-warning">@M(p.Interes,Model.MonedaBase)</td>
+                            <td class="text-end d-none d-md-table-cell">@M(p.Costos,Model.MonedaBase)</td>
+                            <td class="text-end"><div class="d-inline-flex gap-1"><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditarPago@p.Id"><i class="bi bi-pencil"></i></button><form method="post" asp-action="EliminarPago" onsubmit="return confirm('Eliminar pago?')">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@p.Id"/><input type="hidden" name="deudaId" value="@d.Id"/><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form></div></td>
+                        </tr>
+                    }                    @if(!Model.Pagos.Any()){<tr><td colspan="6" class="text-center text-muted py-4">Sin pagos registrados.</td></tr>}
                     </tbody>
                 </table>
             </div>
@@ -168,6 +174,39 @@ else if (d.RequiereDatosParaAmortizar)
     </div>
 </div>
 
+@foreach(var pagoEdit in Model.Pagos)
+{
+    <div class="modal fade" id="modalEditarPago@pagoEdit.Id" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <form class="modal-content" method="post" asp-action="EditarPago">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@pagoEdit.Id" />
+                <input type="hidden" name="deudaId" value="@d.Id" />
+                <div class="modal-header"><h5 class="modal-title">Editar pago de deuda</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-6 col-md-3"><label class="form-label">Fecha</label><input type="date" name="fecha" class="form-control" value="@pagoEdit.Fecha.ToString("yyyy-MM-dd")" required /></div>
+                        <div class="col-6 col-md-3"><label class="form-label">Pago total</label><input type="number" name="montoTotal" class="form-control" min="1" step=".01" value="@pagoEdit.MontoOriginal.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" required /></div>
+                        <div class="col-6 col-md-3"><label class="form-label">Moneda</label><select name="monedaCodigo" class="form-select">@foreach(var moneda in Model.Monedas){if(moneda.Codigo==pagoEdit.MonedaCodigo){<option value="@moneda.Codigo" selected>@moneda.Codigo</option>}else{<option value="@moneda.Codigo">@moneda.Codigo</option>}}</select></div>
+                        <div class="col-6 col-md-3"><label class="form-label">Tasa manual</label><input type="number" name="tasaConversion" class="form-control" min="0" step="0.000001" value="@(pagoEdit.TasaConversion == 1 ? "" : pagoEdit.TasaConversion.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture))" /></div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-4"><label class="form-label">Capital</label><input type="number" name="capital" class="form-control" min="0" step=".01" value="@pagoEdit.Capital.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" /></div>
+                        <div class="col-4"><label class="form-label">Interes</label><input type="number" name="interes" class="form-control" min="0" step=".01" value="@pagoEdit.Interes.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" /></div>
+                        <div class="col-4"><label class="form-label">Costos</label><input type="number" name="costos" class="form-control" min="0" step=".01" value="@pagoEdit.Costos.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" /></div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6"><label class="form-label">Cuenta de pago</label><select name="cuentaPagoId" class="form-select" required><option value="">Selecciona cuenta</option>@foreach(var c in Model.Cuentas){if(c.Id==pagoEdit.CuentaPagoId || (!pagoEdit.CuentaPagoId.HasValue && c.Id==d.CuentaPagoId)){<option value="@c.Id" selected>@c.Nombre</option>}else{<option value="@c.Id">@c.Nombre</option>}}</select></div>
+                        <div class="col-6"><label class="form-label">Efecto del abono</label><select name="efectoAbono" class="form-select"><option value="no_aplica" selected="@(pagoEdit.EfectoAbono=="no_aplica")">No aplica</option><option value="reducir_plazo" selected="@(pagoEdit.EfectoAbono=="reducir_plazo")">Reducir plazo</option><option value="reducir_cuota" selected="@(pagoEdit.EfectoAbono=="reducir_cuota")">Reducir cuota</option></select></div>
+                    </div>
+                    <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="esExtraordinario" value="true" id="edExtra@pagoEdit.Id" @(pagoEdit.EsExtraordinario ? "checked" : "") /><label class="form-check-label" for="edExtra@pagoEdit.Id">Pago extraordinario</label></div>
+                    <label class="form-label">Notas</label><input name="notas" class="form-control" maxlength="300" value="@pagoEdit.Notas" />
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar pago</button></div>
+            </form>
+        </div>
+    </div>
+}
 <div class="modal fade" id="modalEditar" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <form class="modal-content" method="post" asp-action="Guardar">
@@ -316,3 +355,4 @@ function simularAbonoDeuda(){
 pintarGraficasDeuda();
 </script>
 }
+
