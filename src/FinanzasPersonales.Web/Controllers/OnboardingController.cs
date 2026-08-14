@@ -1,7 +1,10 @@
-﻿using Dapper;
+﻿using System.Security.Claims;
+using Dapper;
 using FinanzasPersonales.Web.Data;
 using FinanzasPersonales.Web.Models;
 using FinanzasPersonales.Web.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FinanzasPersonales.Web.Controllers;
@@ -25,7 +28,7 @@ public class OnboardingController : BaseController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult GuardarPreferencias(string idioma = "es", string monedaCodigo = "COP",
+    public async Task<IActionResult> GuardarPreferencias(string idioma = "es", string monedaCodigo = "COP",
         bool recordatoriosEmailActivos = true, int recordatoriosEmailDiasAntes = 3)
     {
         idioma = PreferenciasUsuarioService.NormalizarIdioma(idioma);
@@ -41,6 +44,7 @@ public class OnboardingController : BaseController
               SET recordatorios_email_activos=@recordatoriosEmailActivos,
                   recordatorios_email_dias_antes=@recordatoriosEmailDiasAntes",
             new { UsuarioId, recordatoriosEmailActivos, recordatoriosEmailDiasAntes });
+        await RefrescarClaimsAsync(idioma, monedaCodigo, recordatoriosEmailActivos, recordatoriosEmailDiasAntes, null);
         _auditoria.Registrar(UsuarioId, UsuarioId, "Onboarding", "Preferencias", "usuarios", UsuarioId, "Preferencias iniciales configuradas.");
         TempData["Ok"] = "Preferencias iniciales guardadas.";
         return RedirectToAction("Index");
@@ -59,14 +63,41 @@ public class OnboardingController : BaseController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult Finalizar()
+    public async Task<IActionResult> Finalizar()
     {
         using var con = _db.Abrir();
         AsegurarBaseInicial(con);
         con.Execute("UPDATE usuarios SET onboarding_completado=TRUE WHERE id=@UsuarioId", new { UsuarioId });
+        await RefrescarClaimsAsync(onboardingCompletado: true);
         _auditoria.Registrar(UsuarioId, UsuarioId, "Onboarding", "Finalizar", "usuarios", UsuarioId, "Onboarding completado.");
         TempData["Ok"] = "Configuracion inicial completada.";
         return RedirectToAction("Index", "Inicio");
+    }
+
+    private async Task RefrescarClaimsAsync(string? idioma = null, string? monedaCodigo = null,
+        bool? recordatoriosEmailActivos = null, int? recordatoriosEmailDiasAntes = null, bool? onboardingCompletado = null)
+    {
+        var auth = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        var propiedades = auth.Properties ?? new AuthenticationProperties();
+        var reemplazar = new HashSet<string>
+        {
+            "Idioma",
+            "MonedaCodigo",
+            "RecordatoriosEmailActivos",
+            "RecordatoriosEmailDiasAntes",
+            "OnboardingCompletado"
+        };
+        var claims = User.Claims.Where(x => !reemplazar.Contains(x.Type)).ToList();
+        claims.Add(new Claim("Idioma", idioma ?? User.FindFirstValue("Idioma") ?? "es"));
+        claims.Add(new Claim("MonedaCodigo", monedaCodigo ?? User.FindFirstValue("MonedaCodigo") ?? "COP"));
+        claims.Add(new Claim("RecordatoriosEmailActivos", (recordatoriosEmailActivos ?? (User.FindFirstValue("RecordatoriosEmailActivos") ?? "true") == "true") ? "true" : "false"));
+        var diasClaim = recordatoriosEmailDiasAntes
+            ?? (int.TryParse(User.FindFirstValue("RecordatoriosEmailDiasAntes"), out var dias) ? Math.Clamp(dias, 0, 60) : 3);
+        claims.Add(new Claim("RecordatoriosEmailDiasAntes", diasClaim.ToString()));
+        claims.Add(new Claim("OnboardingCompletado", (onboardingCompletado ?? User.FindFirstValue("OnboardingCompletado") == "true") ? "true" : "false"));
+
+        var identidad = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identidad), propiedades);
     }
 
     private void AsegurarBaseInicial(System.Data.IDbConnection con)
@@ -118,3 +149,4 @@ public class OnboardingController : BaseController
         };
     }
 }
+
