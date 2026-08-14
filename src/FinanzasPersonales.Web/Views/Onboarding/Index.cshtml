@@ -1,82 +1,120 @@
-@model OnboardingVm
+﻿@model OnboardingVm
 @{
     ViewBag.Titulo = "Configuracion inicial";
+    var baseLista = Model.TieneCuentas && Model.TieneCategorias;
 }
 
-<div class="portal-hero mb-4">
-    <div>
-        <span class="portal-kicker">Primeros pasos</span>
-        <h2 class="mb-1">Configura tu espacio financiero</h2>
-        <p class="mb-0 opacity-75">Deja lista tu moneda, recordatorios, cuentas, categorias y primer registro.</p>
-    </div>
-</div>
+<style>
+    .onboarding-page { padding-bottom: calc(7rem + env(safe-area-inset-bottom)); }
+    .onboarding-hero { display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:1.35rem;border-radius:22px;color:#fff;background:linear-gradient(135deg,#6D28D9,#7C3AED 55%,#D4AF37);box-shadow:0 1rem 2rem rgba(124,58,237,.22); }
+    .onboarding-hero p { max-width:680px;color:rgba(255,255,255,.82); }
+    .onboarding-step { position:relative;overflow:hidden; }
+    .onboarding-step-number { width:34px;height:34px;display:grid;place-items:center;border-radius:12px;color:#fff;background:var(--purple);font-weight:800; }
+    .onboarding-status { display:flex;flex-wrap:wrap;gap:.45rem; }
+    .onboarding-actions { position:sticky;bottom:82px;z-index:10;margin-top:1rem;padding:.8rem;border:1px solid var(--border);border-radius:18px;background:color-mix(in srgb,var(--surface) 94%,transparent);box-shadow:0 -.5rem 1.5rem rgba(15,23,42,.12);backdrop-filter:blur(14px); }
+    @@media (max-width: 767.98px) {
+        .onboarding-page { padding-bottom: calc(9rem + env(safe-area-inset-bottom)); }
+        .onboarding-hero { border-radius:18px;padding:1.15rem; }
+        .onboarding-hero h2 { font-size:1.45rem; }
+        .onboarding-actions { bottom:76px; }
+        .onboarding-actions .btn { min-height:48px;font-size:1rem; }
+    }
+</style>
 
-<div class="row g-3">
-    <div class="col-12 col-lg-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <span class="page-eyebrow">Paso 1</span>
-                <h5>Preferencias</h5>
-                <form method="post" asp-action="GuardarPreferencias">
-                    @Html.AntiForgeryToken()
-                    <label class="form-label">Idioma</label>
-                    <select name="idioma" class="form-select mb-3">
-                        <option value="es" selected="@(Model.Idioma == "es")">Espanol</option>
-                        <option value="en" selected="@(Model.Idioma == "en")">English</option>
-                        <option value="pt" selected="@(Model.Idioma == "pt")">Portugues</option>
-                    </select>
-                    <label class="form-label">Moneda base</label>
-                    <select name="monedaCodigo" class="form-select mb-3">
-                        @foreach (var moneda in new[] { "COP", "USD", "EUR", "BRL" })
-                        {
-                            <option value="@moneda" selected="@(Model.MonedaCodigo == moneda)">@moneda</option>
-                        }
-                    </select>
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" name="recordatoriosEmailActivos" value="true" id="recActivos" @(Model.RecordatoriosEmailActivos ? "checked" : "") />
-                        <label class="form-check-label" for="recActivos">Recordatorios por correo</label>
+<div class="onboarding-page">
+    <div class="onboarding-hero mb-3">
+        <div>
+            <span class="portal-kicker">Primeros pasos</span>
+            <h2 class="mb-1">Configura tu espacio financiero</h2>
+            <p class="mb-0">Puedes guardar tus preferencias, crear una base inicial y entrar a la aplicacion. Luego podras ajustar cuentas, categorias y movimientos con calma.</p>
+        </div>
+        <i class="bi bi-stars fs-2 text-warning d-none d-sm-block"></i>
+    </div>
+
+    <div class="alert alert-primary-subtle border border-primary-subtle small mb-3">
+        <i class="bi bi-info-circle"></i> Para no bloquear a nadie, el boton final crea automaticamente cuentas y categorias base si todavia faltan.
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm h-100 onboarding-step">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="onboarding-step-number">1</span>
+                        <div><span class="page-eyebrow mb-0">Preferencias</span><h5 class="mb-0">Idioma y moneda</h5></div>
                     </div>
-                    <label class="form-label">Dias antes</label>
-                    <input type="number" name="recordatoriosEmailDiasAntes" min="0" max="60" class="form-control mb-3" value="@Model.RecordatoriosEmailDiasAntes" />
-                    <button class="btn btn-primary w-100">Guardar preferencias</button>
-                </form>
+                    <form method="post" asp-action="GuardarPreferencias">
+                        @Html.AntiForgeryToken()
+                        <label class="form-label">Idioma</label>
+                        <select name="idioma" class="form-select mb-3">
+                            <option value="es" selected="@(Model.Idioma == "es")">Espanol</option>
+                            <option value="en" selected="@(Model.Idioma == "en")">English</option>
+                            <option value="pt" selected="@(Model.Idioma == "pt")">Portugues</option>
+                        </select>
+                        <label class="form-label">Moneda base</label>
+                        <select name="monedaCodigo" class="form-select mb-3">
+                            @foreach (var moneda in new[] { "COP", "USD", "EUR", "BRL" })
+                            {
+                                <option value="@moneda" selected="@(Model.MonedaCodigo == moneda)">@moneda</option>
+                            }
+                        </select>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="recordatoriosEmailActivos" value="true" id="recActivos" @(Model.RecordatoriosEmailActivos ? "checked" : "") />
+                            <label class="form-check-label" for="recActivos">Recordatorios por correo</label>
+                        </div>
+                        <label class="form-label">Dias antes</label>
+                        <input type="number" name="recordatoriosEmailDiasAntes" min="0" max="60" class="form-control mb-3" value="@Model.RecordatoriosEmailDiasAntes" />
+                        <button class="btn btn-primary w-100"><i class="bi bi-save"></i> Guardar preferencias</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm h-100 onboarding-step">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="onboarding-step-number">2</span>
+                        <div><span class="page-eyebrow mb-0">Base inicial</span><h5 class="mb-0">Cuentas y categorias</h5></div>
+                    </div>
+                    <p class="text-muted small">Creamos efectivo, cuenta principal, tarjeta de credito y categorias comunes. Luego puedes editarlas o borrarlas.</p>
+                    <div class="onboarding-status mb-3">
+                        <span class="badge @(Model.TieneCuentas ? "text-bg-success" : "text-bg-warning")"><i class="bi @(Model.TieneCuentas ? "bi-check-circle" : "bi-clock")"></i> Cuentas @(Model.TieneCuentas ? "listas" : "pendientes")</span>
+                        <span class="badge @(Model.TieneCategorias ? "text-bg-success" : "text-bg-warning")"><i class="bi @(Model.TieneCategorias ? "bi-check-circle" : "bi-clock")"></i> Categorias @(Model.TieneCategorias ? "listas" : "pendientes")</span>
+                    </div>
+                    <form method="post" asp-action="CrearBase">
+                        @Html.AntiForgeryToken()
+                        <button class="btn btn-outline-primary w-100"><i class="bi bi-magic"></i> @(baseLista ? "Revisar base inicial" : "Crear base inicial")</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm h-100 onboarding-step">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="onboarding-step-number">3</span>
+                        <div><span class="page-eyebrow mb-0">Primer registro</span><h5 class="mb-0">Empieza cuando quieras</h5></div>
+                    </div>
+                    <p class="text-muted small">Puedes registrar tu primer movimiento ahora o entrar al inicio y hacerlo despues.</p>
+                    <div class="mb-3">
+                        <span class="badge @(Model.TieneMovimiento ? "text-bg-success" : "text-bg-secondary")"><i class="bi @(Model.TieneMovimiento ? "bi-check-circle" : "bi-dash-circle")"></i> Movimiento @(Model.TieneMovimiento ? "registrado" : "opcional")</span>
+                    </div>
+                    <a class="btn btn-outline-primary w-100 mb-2" asp-controller="Movimientos" asp-action="Index" asp-route-nuevo="true"><i class="bi bi-plus-lg"></i> Registrar movimiento</a>
+                    <form method="post" asp-action="Finalizar">
+                        @Html.AntiForgeryToken()
+                        <button class="btn btn-premium w-100"><i class="bi bi-check-circle"></i> Entrar a mi panel</button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <span class="page-eyebrow">Paso 2</span>
-                <h5>Cuentas y categorias base</h5>
-                <p class="text-muted small">Creamos efectivo, cuenta principal, tarjeta de credito y categorias comunes. Luego puedes editarlas.</p>
-                <div class="mb-3">
-                    <span class="badge @(Model.TieneCuentas ? "text-bg-success" : "text-bg-warning")">Cuentas @(Model.TieneCuentas ? "listas" : "pendientes")</span>
-                    <span class="badge @(Model.TieneCategorias ? "text-bg-success" : "text-bg-warning")">Categorias @(Model.TieneCategorias ? "listas" : "pendientes")</span>
-                </div>
-                <form method="post" asp-action="CrearBase">
-                    @Html.AntiForgeryToken()
-                    <button class="btn btn-outline-primary w-100"><i class="bi bi-magic"></i> Crear base inicial</button>
-                </form>
-            </div>
-        </div>
-    </div>
-    <div class="col-12 col-lg-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <span class="page-eyebrow">Paso 3</span>
-                <h5>Primer movimiento</h5>
-                <p class="text-muted small">Registra tu saldo inicial o primer gasto para que los tableros empiecen a tener sentido.</p>
-                <div class="mb-3">
-                    <span class="badge @(Model.TieneMovimiento ? "text-bg-success" : "text-bg-warning")">Movimiento @(Model.TieneMovimiento ? "registrado" : "pendiente")</span>
-                </div>
-                <a class="btn btn-outline-primary w-100 mb-2" asp-controller="Movimientos" asp-action="Index" asp-route-nuevo="true"><i class="bi bi-plus-lg"></i> Registrar movimiento</a>
-                <form method="post" asp-action="Finalizar">
-                    @Html.AntiForgeryToken()
-                    <button class="btn btn-premium w-100" @(Model.TieneCuentas && Model.TieneCategorias ? "" : "disabled")>
-                        <i class="bi bi-check-circle"></i> Finalizar configuracion
-                    </button>
-                </form>
-            </div>
-        </div>
+
+    <div class="onboarding-actions d-lg-none">
+        <form method="post" asp-action="Finalizar">
+            @Html.AntiForgeryToken()
+            <button class="btn btn-premium w-100"><i class="bi bi-check-circle"></i> Entrar a mi panel</button>
+        </form>
     </div>
 </div>

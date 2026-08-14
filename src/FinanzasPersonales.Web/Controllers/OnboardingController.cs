@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using FinanzasPersonales.Web.Data;
 using FinanzasPersonales.Web.Models;
 using FinanzasPersonales.Web.Services;
@@ -51,6 +51,26 @@ public class OnboardingController : BaseController
     public IActionResult CrearBase()
     {
         using var con = _db.Abrir();
+        AsegurarBaseInicial(con);
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Onboarding", "Crear base", "usuarios", UsuarioId, "Cuentas y categorias iniciales creadas.");
+        TempData["Ok"] = "Base inicial creada. Ya puedes registrar tu primer movimiento.";
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult Finalizar()
+    {
+        using var con = _db.Abrir();
+        AsegurarBaseInicial(con);
+        con.Execute("UPDATE usuarios SET onboarding_completado=TRUE WHERE id=@UsuarioId", new { UsuarioId });
+        _auditoria.Registrar(UsuarioId, UsuarioId, "Onboarding", "Finalizar", "usuarios", UsuarioId, "Onboarding completado.");
+        TempData["Ok"] = "Configuracion inicial completada.";
+        return RedirectToAction("Index", "Inicio");
+    }
+
+    private void AsegurarBaseInicial(System.Data.IDbConnection con)
+    {
         var cuentas = con.ExecuteScalar<int>("SELECT COUNT(*) FROM cuentas WHERE usuario_id=@UsuarioId", new { UsuarioId });
         if (cuentas == 0)
         {
@@ -77,21 +97,6 @@ public class OnboardingController : BaseController
                   (@UsuarioId,'Otros gastos','gasto','variable','#6B7280','bi-three-dots')",
                 new { UsuarioId });
         }
-
-        _auditoria.Registrar(UsuarioId, UsuarioId, "Onboarding", "Crear base", "usuarios", UsuarioId, "Cuentas y categorias iniciales creadas.");
-        TempData["Ok"] = "Base inicial creada. Ya puedes registrar tu primer movimiento.";
-        return RedirectToAction("Index");
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public IActionResult Finalizar()
-    {
-        using var con = _db.Abrir();
-        con.Execute("UPDATE usuarios SET onboarding_completado=TRUE WHERE id=@UsuarioId", new { UsuarioId });
-        _auditoria.Registrar(UsuarioId, UsuarioId, "Onboarding", "Finalizar", "usuarios", UsuarioId, "Onboarding completado.");
-        TempData["Ok"] = "Configuracion inicial completada.";
-        return RedirectToAction("Index", "Inicio");
     }
 
     private OnboardingVm CrearVm(System.Data.IDbConnection con)
